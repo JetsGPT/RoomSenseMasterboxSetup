@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RoomSense Setup</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>RoomSense Wi‑Fi Setup</h1>
+    <p>Select your Wi‑Fi network and enter the password.</p>
+
+    <div class="card">
+      <div class="row">
+        <label for="ssid">Network</label>
+        <select id="ssid"></select>
+        <button id="refresh">Refresh</button>
+      </div>
+      <div class="row">
+        <label for="password">Password</label>
+        <input id="password" type="password" placeholder="••••••••" />
+      </div>
+      <div class="row">
+        <label for="country">Country</label>
+        <input id="country" type="text" value="AT" maxlength="2" />
+      </div>
+      <div class="row">
+        <button id="connect">Connect</button>
+      </div>
+      <div id="msg"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

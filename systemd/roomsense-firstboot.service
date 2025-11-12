@@ -1,0 +1,13 @@
+[Unit]
+Description=RoomSense First Boot Orchestrator
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+Environment=COUNTRY=AT
+ExecStart=/opt/roomsense/setup/scripts/firstboot.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

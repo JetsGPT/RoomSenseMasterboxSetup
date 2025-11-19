@@ -1,8 +1,0 @@
-[Unit]
-Description=RoomSense Portal Target
-Requires=roomsense-ap.service roomsense-portal.service
-After=network-pre.target NetworkManager.service roomsense-ap.service
-Wants=NetworkManager.service
-
-[Install]
-WantedBy=multi-user.target

@@ -10,7 +10,14 @@ if [ -z "$SSID" ] || [ -z "$PSK" ]; then
   exit 1
 fi
 
+# Detect Wi-Fi interface with multiple methods
 WIFI_IF=$(iw dev 2>/dev/null | awk '/Interface/ {print $2; exit}')
+if [ -z "$WIFI_IF" ] && command -v nmcli >/dev/null 2>&1; then
+  WIFI_IF=$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2 == "wifi" {print $1; exit}')
+fi
+if [ -z "$WIFI_IF" ]; then
+  WIFI_IF=$(ls /sys/class/net/ | grep -E '^wlan[0-9]+$' | head -n1)
+fi
 [ -z "$WIFI_IF" ] && WIFI_IF=wlan0
 
 sudo iw reg set "$COUNTRY" || true

@@ -86,5 +86,48 @@ def health():
     return jsonify({"ok": True})
 
 
+# Captive portal detection endpoints
+# These endpoints are checked by various devices to detect captive portals
+
+# Apple iOS/macOS detection
+@app.get("/library/test/success.html")
+@app.get("/hotspot-detect.html")
+def apple_detect():
+    """Apple devices check this endpoint"""
+    return render_template("index.html")
+
+
+# Android/Chrome detection
+@app.get("/generate_204")
+def android_detect():
+    """Android and Chrome check this endpoint - should return 204 No Content"""
+    return "", 204
+
+
+# Windows detection
+@app.get("/ncsi.txt")
+def windows_detect():
+    """Windows checks this endpoint - should return 'Microsoft NCSI'"""
+    return "Microsoft NCSI", 200, {"Content-Type": "text/plain"}
+
+
+@app.get("/connecttest.txt")
+def windows_connecttest():
+    """Windows 10+ checks this endpoint"""
+    return "Microsoft Connect Test", 200, {"Content-Type": "text/plain"}
+
+
+# Generic catch-all for any other path - redirect to portal
+# This must be last to not interfere with API routes
+@app.route("/<path:path>")
+def catch_all(path):
+    """Catch-all route to redirect any other requests to the portal"""
+    # Don't catch API routes or static files - Flask will handle 404 for those
+    if path.startswith("api/") or path.startswith("static/"):
+        return "", 404
+    # For any other path, show the portal
+    return render_template("index.html")
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)

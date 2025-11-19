@@ -11,7 +11,18 @@ mkdir -p "$STACK_DIR" "$BACKEND_DIR" "$FRONTEND_DIR" "$LOG_DIR"
 if ! command -v docker >/dev/null 2>&1; then
   echo "[deploy] Installing Docker Engine"
   curl -fsSL https://get.docker.com | sh
-  sudo usermod -aG docker "$SUDO_USER" || true
+  # Try to add user to docker group if SUDO_USER is set, otherwise try common usernames
+  if [ -n "${SUDO_USER:-}" ]; then
+    sudo usermod -aG docker "$SUDO_USER" || true
+  else
+    # Try common usernames
+    for user in pi ubuntu debian; do
+      if id "$user" >/dev/null 2>&1; then
+        sudo usermod -aG docker "$user" || true
+        break
+      fi
+    done
+  fi
 fi
 
 # Ensure compose plugin
@@ -57,6 +68,11 @@ services:
     restart: unless-stopped
 YAML
 fi
+
+# Stop portal and AP services before deploying (they use port 80)
+echo "[deploy] Stopping portal and AP services..."
+systemctl stop roomsense-portal.service roomsense-ap.service 2>/dev/null || true
+sleep 2
 
 # Build and start
 ( cd "$STACK_DIR" && docker compose up -d --build )

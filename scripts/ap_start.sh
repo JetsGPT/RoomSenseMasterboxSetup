@@ -112,6 +112,14 @@ if command -v nmcli >/dev/null 2>&1; then
   # Extract IP address without CIDR for iptables and dnsmasq
   AP_IP=$(echo "$AP_ADDR" | cut -d'/' -f1)
   
+  # Configure hotspot to use our dnsmasq as DNS server for clients
+  # NetworkManager hotspot mode provides DHCP, we'll configure it to advertise our IP as DNS
+  echo "[ap_start] Configuring hotspot DNS settings to use $AP_IP..."
+  nmcli connection modify "$HOTSPOT_CONN" ipv4.dns "$AP_IP" 2>/dev/null || true
+  nmcli connection modify "$HOTSPOT_CONN" ipv4.ignore-auto-dns yes 2>/dev/null || true
+  # Reload connection to apply DNS settings
+  nmcli connection reload "$HOTSPOT_CONN" 2>/dev/null || true
+  
   # Start dnsmasq for DNS hijacking (captive portal)
   # NetworkManager handles DHCP, so dnsmasq only does DNS
   echo "[ap_start] Starting dnsmasq for DNS hijacking..."
@@ -143,6 +151,14 @@ if command -v nmcli >/dev/null 2>&1; then
     echo "[ap_start] HTTP redirect to portal enabled (redirecting to $AP_IP:80)"
   else
     echo "[ap_start] HTTP redirect rule already exists"
+  fi
+  
+  # Also redirect HTTPS (port 443) - will show certificate warning but allows detection
+  if ! sudo iptables -t nat -C PREROUTING -i "$WIFI_IF" -p tcp --dport 443 -j DNAT --to-destination "$AP_IP:80" 2>/dev/null; then
+    sudo iptables -t nat -A PREROUTING -i "$WIFI_IF" -p tcp --dport 443 -j DNAT --to-destination "$AP_IP:80"
+    echo "[ap_start] HTTPS redirect to portal enabled (redirecting to $AP_IP:80)"
+  else
+    echo "[ap_start] HTTPS redirect rule already exists"
   fi
 else
   echo "[ap_start] Legacy path: hostapd + static IP on $WIFI_IF"

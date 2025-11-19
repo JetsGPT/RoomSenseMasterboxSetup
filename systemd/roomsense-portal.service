@@ -1,6 +1,7 @@
 [Unit]
 Description=RoomSense Wi‑Fi Setup Portal
-After=network-pre.target
+After=network-pre.target roomsense-ap.service
+Requires=roomsense-ap.service
 
 [Service]
 Type=simple
@@ -8,6 +9,8 @@ Environment=COUNTRY=AT
 ExecStart=/opt/roomsense/setup/scripts/portal_start.sh
 ExecStop=/opt/roomsense/setup/scripts/portal_stop.sh
 Restart=on-failure
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

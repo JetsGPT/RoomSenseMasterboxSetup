@@ -109,8 +109,33 @@ if command -v nmcli >/dev/null 2>&1; then
     echo "[ap_start] Hotspot IP address: $AP_ADDR"
   fi
   
-  # Extract IP address without CIDR for iptables
+  # Extract IP address without CIDR for iptables and dnsmasq
   AP_IP=$(echo "$AP_ADDR" | cut -d'/' -f1)
+  
+  # Start dnsmasq for DNS hijacking (captive portal)
+  # NetworkManager handles DHCP, so dnsmasq only does DNS
+  echo "[ap_start] Starting dnsmasq for DNS hijacking..."
+  sudo systemctl stop dnsmasq 2>/dev/null || true
+  # Kill any existing roomsense dnsmasq instance
+  if [ -f /run/roomsense-dnsmasq.pid ]; then
+    sudo kill "$(cat /run/roomsense-dnsmasq.pid)" 2>/dev/null || true
+    sudo rm -f /run/roomsense-dnsmasq.pid 2>/dev/null || true
+  fi
+  # Update dnsmasq config with actual AP IP
+  sudo sed -i "s|address=/#/.*|address=/#/$AP_IP|" /etc/roomsense/dnsmasq-portal.conf 2>/dev/null || true
+  # Start dnsmasq in DNS-only mode (no DHCP to avoid conflict with NetworkManager)
+  sudo dnsmasq \
+    --conf-file=/etc/roomsense/dnsmasq-portal.conf \
+    --interface="$WIFI_IF" \
+    --except-interface=lo \
+    --bind-interfaces \
+    --no-dhcp \
+    --log-facility=/opt/roomsense/logs/dnsmasq.log \
+    --pid-file=/run/roomsense-dnsmasq.pid \
+    --log-queries 2>&1 || {
+    echo "[ap_start] WARNING: Failed to start dnsmasq, DNS hijacking may not work" >&2
+  }
+  echo "[ap_start] DNS hijacking enabled (all DNS queries redirect to $AP_IP)"
   
   # Add iptables redirect from clients' HTTP to portal on this device
   if ! sudo iptables -t nat -C PREROUTING -i "$WIFI_IF" -p tcp --dport 80 -j DNAT --to-destination "$AP_IP:80" 2>/dev/null; then

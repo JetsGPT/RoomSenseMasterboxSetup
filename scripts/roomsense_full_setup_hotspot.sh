@@ -53,6 +53,12 @@ else
   fi
 fi
 
+# Ensure next boot *always* goes into hotspot/portal once, regardless of internet
+STATE_DIR=/opt/roomsense/state
+FORCE_PORTAL_FLAG="$STATE_DIR/force_portal_once"
+mkdir -p "$STATE_DIR"
+touch "$FORCE_PORTAL_FLAG"
+
 echo "[roomsense_full_setup_hotspot] Setup complete. Rebooting now so hotspot/portal can start on clean boot."
 sleep 3
 reboot

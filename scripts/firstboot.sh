@@ -6,6 +6,18 @@ COUNTRY=${COUNTRY:-AT}
 LOG_DIR=/opt/roomsense/logs
 mkdir -p "$LOG_DIR"
 
+STATE_DIR=/opt/roomsense/state
+FORCE_PORTAL_FLAG="$STATE_DIR/force_portal_once"
+mkdir -p "$STATE_DIR"
+
+if [ -f "$FORCE_PORTAL_FLAG" ]; then
+  echo "[firstboot] Force portal flag detected; starting hotspot + portal regardless of internet"
+  rm -f "$FORCE_PORTAL_FLAG" || true
+  export COUNTRY
+  systemctl start roomsense-portal.target
+  exit 0
+fi
+
 if "$(dirname "$0")/network_check.sh"; then
   echo "[firstboot] Internet available; starting deploy"
   systemctl start roomsense-deploy.service

@@ -25,4 +25,9 @@ sudo systemctl daemon-reload
 # Enable firstboot to run at boot
 sudo systemctl enable roomsense-firstboot.service
 
+# Note: roomsense-ap.service and roomsense-portal.service are started by roomsense-portal.target
+# They don't need to be enabled separately, but we can verify they're available
+echo "[install_systemd] Verifying services are available..."
+systemctl list-unit-files | grep -E 'roomsense-(ap|portal|firstboot)' || true
+
 echo "[install_systemd] Done"

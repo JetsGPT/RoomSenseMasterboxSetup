@@ -14,7 +14,13 @@ if [ -f "$FORCE_PORTAL_FLAG" ]; then
   echo "[firstboot] Force portal flag detected; starting hotspot + portal regardless of internet"
   rm -f "$FORCE_PORTAL_FLAG" || true
   export COUNTRY
-  systemctl start roomsense-portal.target
+  if ! systemctl start roomsense-portal.target; then
+    echo "[firstboot] ERROR: Failed to start roomsense-portal.target" >&2
+    systemctl status roomsense-ap.service || true
+    systemctl status roomsense-portal.service || true
+    exit 1
+  fi
+  echo "[firstboot] Portal target started successfully"
   exit 0
 fi
 
@@ -27,4 +33,10 @@ fi
 # No internet: start portal target
 export COUNTRY
 echo "[firstboot] No internet; starting hotspot + portal"
-systemctl start roomsense-portal.target
+if ! systemctl start roomsense-portal.target; then
+  echo "[firstboot] ERROR: Failed to start roomsense-portal.target" >&2
+  systemctl status roomsense-ap.service || true
+  systemctl status roomsense-portal.service || true
+  exit 1
+fi
+echo "[firstboot] Portal target started successfully"

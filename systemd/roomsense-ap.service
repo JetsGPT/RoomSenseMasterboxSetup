@@ -1,6 +1,7 @@
 [Unit]
 Description=RoomSense Access Point
-After=network-pre.target
+After=network-pre.target NetworkManager.service
+Wants=NetworkManager.service
 
 [Service]
 Type=oneshot
@@ -10,6 +11,8 @@ Environment=PSK=roomsense123
 Environment=COUNTRY=AT
 ExecStart=/opt/roomsense/setup/scripts/ap_start.sh
 ExecStop=/opt/roomsense/setup/scripts/ap_stop.sh
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

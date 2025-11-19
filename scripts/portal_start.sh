@@ -34,5 +34,18 @@ if ! command -v gunicorn >/dev/null 2>&1; then
   exit 1
 fi
 
+# Check if port 80 is already in use
+if command -v ss >/dev/null 2>&1; then
+  if ss -tlnp | grep -q ":80 "; then
+    echo "[portal_start] WARNING: Port 80 is already in use" >&2
+    ss -tlnp | grep ":80 " || true
+  fi
+elif command -v netstat >/dev/null 2>&1; then
+  if netstat -tlnp 2>/dev/null | grep -q ":80 "; then
+    echo "[portal_start] WARNING: Port 80 is already in use" >&2
+    netstat -tlnp 2>/dev/null | grep ":80 " || true
+  fi
+fi
+
 # Start gunicorn
 exec gunicorn -w 2 -b 0.0.0.0:80 app:app --chdir /opt/roomsense/portal --access-logfile "$LOG_DIR/portal-access.log" --error-logfile "$LOG_DIR/portal-error.log"

@@ -130,7 +130,10 @@ if command -v nmcli >/dev/null 2>&1; then
     sudo rm -f /run/roomsense-dnsmasq.pid 2>/dev/null || true
   fi
   # Update dnsmasq config with actual AP IP
+  # Update wildcard catch-all
   sudo sed -i "s|address=/#/.*|address=/#/$AP_IP|" /etc/roomsense/dnsmasq-portal.conf 2>/dev/null || true
+  # Update all explicit domain entries (format: address=/domain/IP)
+  sudo sed -i "s|address=/\([^/]*\)/10\.42\.0\.1|address=/\1/$AP_IP|g" /etc/roomsense/dnsmasq-portal.conf 2>/dev/null || true
   # Start dnsmasq in DNS-only mode (no DHCP to avoid conflict with NetworkManager)
   sudo dnsmasq \
     --conf-file=/etc/roomsense/dnsmasq-portal.conf \

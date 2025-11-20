@@ -32,13 +32,55 @@ def scan_wifi_networks():
         )
         
         if result.returncode != 0:
-            # Try alternative method
+            # Try nmcli
             result = subprocess.run(
                 ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list'],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
+            
+            if result.returncode != 0:
+                # Try iw as last resort
+                result = subprocess.run(
+                    ['iw', 'dev', 'wlan0', 'scan'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if result.returncode == 0:
+                    networks = []
+                    current_ssid = None
+                    current_signal = '0'
+                    current_security = 'Open'
+                    
+                    for line in result.stdout.split('\n'):
+                        line = line.strip()
+                        if line.startswith('BSS '):
+                            if current_ssid:
+                                networks.append({'ssid': current_ssid, 'signal': current_signal, 'security': current_security})
+                            current_ssid = None
+                            current_signal = '0'
+                            current_security = 'Open'
+                        elif line.startswith('SSID: '):
+                            current_ssid = line.split('SSID: ')[1].strip()
+                        elif 'signal:' in line:
+                            current_signal = line.split('signal:')[1].split('.')[0].strip()
+                        elif 'RSN:' in line or 'WPA:' in line:
+                            current_security = 'WPA2'
+                            
+                    if current_ssid:
+                        networks.append({'ssid': current_ssid, 'signal': current_signal, 'security': current_security})
+                        
+                    # Deduplicate
+                    seen = set()
+                    unique = []
+                    for net in networks:
+                        if net['ssid'] and net['ssid'] not in seen:
+                            seen.add(net['ssid'])
+                            unique.append(net)
+                    return unique
             
             if result.returncode == 0:
                 networks = []

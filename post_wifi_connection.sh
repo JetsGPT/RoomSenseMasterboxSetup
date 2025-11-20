@@ -228,7 +228,20 @@ EOF
     fi
 fi
 
+# Get current IP address
+IP_ADDR=$(hostname -I | awk '{print $1}')
+if [ -z "$IP_ADDR" ]; then
+    IP_ADDR="localhost"
+fi
+
 log "Post-Wi-Fi setup complete!"
-log "Backend: http://localhost:5000"
-log "Frontend: http://localhost"
+log "===================================================="
+log "RoomSense is running!"
+log "Backend: http://${IP_ADDR}:5000"
+log "Frontend: http://${IP_ADDR}"
+log "===================================================="
+
+# Try to display to console users
+echo -e "\n\n${GREEN}RoomSense Setup Complete!${NC}" > /dev/tty1 2>/dev/null || true
+echo -e "${YELLOW}Access RoomSense at: http://${IP_ADDR}${NC}\n" > /dev/tty1 2>/dev/null || true
 

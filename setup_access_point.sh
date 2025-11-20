@@ -43,10 +43,16 @@ driver=nl80211
 ssid=${AP_SSID}
 hw_mode=g
 channel=${AP_CHANNEL}
-wmm_enabled=0
+country_code=AT
+ieee80211n=1
+wmm_enabled=1
 macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
+wpa=2
+wpa_passphrase=${AP_PASSWORD}
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
 EOF
 
 # Configure hostapd daemon
@@ -113,6 +119,7 @@ fi
 
 echo -e "${GREEN}Access Point configuration complete!${NC}"
 echo -e "${YELLOW}SSID: ${AP_SSID}${NC}"
-echo -e "${YELLOW}Security: Open (No Password)${NC}"
+echo -e "${YELLOW}Security: WPA2${NC}"
+echo -e "${YELLOW}Password: ${AP_PASSWORD}${NC}"
 echo -e "${YELLOW}IP Address: ${AP_IP}${NC}"
 

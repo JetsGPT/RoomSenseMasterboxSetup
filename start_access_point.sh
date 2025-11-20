@@ -58,7 +58,7 @@ sleep 2
 # Start captive portal server
 echo -e "${YELLOW}Starting captive portal server...${NC}"
 cd "${SCRIPT_DIR}"
-python3 -m pip install flask --quiet 2>/dev/null || pip3 install flask --quiet 2>/dev/null || true
+
 
 # Kill any existing captive portal
 pkill -f captive_portal.py || true

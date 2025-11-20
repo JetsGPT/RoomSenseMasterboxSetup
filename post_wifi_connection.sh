@@ -52,6 +52,12 @@ if ! command -v docker > /dev/null 2>&1; then
     usermod -aG docker $USER 2>/dev/null || true
 fi
 
+# Configure and start Avahi (mDNS)
+log "Configuring mDNS..."
+systemctl enable avahi-daemon
+systemctl restart avahi-daemon
+log "Hostname is: $(hostname)"
+
 # Install Docker Compose
 log "Installing Docker Compose..."
 if ! docker compose version > /dev/null 2>&1 && ! command -v docker-compose > /dev/null 2>&1; then

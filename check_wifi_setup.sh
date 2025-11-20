@@ -31,6 +31,12 @@ if [ -f "${WPA_SUPPLICANT_CONF}" ]; then
         # Wait for interface to be ready
         sleep 5
         
+        # Stop AP services to prevent conflicts
+        systemctl stop hostapd 2>/dev/null || true
+        systemctl stop dnsmasq 2>/dev/null || true
+        systemctl disable hostapd 2>/dev/null || true
+        systemctl disable dnsmasq 2>/dev/null || true
+        
         # Try to connect to Wi-Fi
         systemctl restart wpa_supplicant 2>/dev/null || true
         systemctl restart dhcpcd 2>/dev/null || true

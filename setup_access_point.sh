@@ -47,11 +47,6 @@ wmm_enabled=0
 macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
-wpa=2
-wpa_passphrase="${AP_PASSWORD}"
-wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP
-rsn_pairwise=CCMP
 EOF
 
 # Configure hostapd daemon
@@ -118,6 +113,6 @@ fi
 
 echo -e "${GREEN}Access Point configuration complete!${NC}"
 echo -e "${YELLOW}SSID: ${AP_SSID}${NC}"
-echo -e "${YELLOW}Password: ${AP_PASSWORD}${NC}"
+echo -e "${YELLOW}Security: Open (No Password)${NC}"
 echo -e "${YELLOW}IP Address: ${AP_IP}${NC}"
 

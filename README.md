@@ -40,7 +40,7 @@ sudo ./install.sh
    - Configures `hostapd` to create an access point
    - Sets up `dnsmasq` for DHCP and DNS
    - Starts the captive portal web server
-3. The access point appears as **"RoomSense-Setup"** (password: `roomsense123`)
+3. The access point appears as **"RoomSense-Setup"** (open network, no password required)
 4. When users connect, they're automatically redirected to the setup page
 5. Users select their Wi-Fi network and enter the password
 6. The system saves credentials and reboots
@@ -61,7 +61,7 @@ sudo ./install.sh
 ## Access Point Details
 
 - **SSID**: `RoomSense-Setup`
-- **Password**: `roomsense123`
+- **Security**: Open (No Password)
 - **IP Address**: `192.168.4.1`
 - **DHCP Range**: `192.168.4.2` - `192.168.4.20`
 

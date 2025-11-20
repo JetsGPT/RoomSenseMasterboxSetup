@@ -16,7 +16,7 @@
 
 2. **Connect to the access point:**
    - Look for Wi-Fi network: **RoomSense-Setup**
-   - Password: **roomsense123**
+   - Security: **Open (No Password)**
    - Connect from your phone/laptop
 
 3. **Configure Wi-Fi:**

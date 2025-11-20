@@ -50,7 +50,7 @@ Boot → check_wifi_setup.sh
 - **Dependencies**: `hostapd`, `dnsmasq`
 - **Configuration**:
   - SSID: `RoomSense-Setup`
-  - Password: `roomsense123`
+  - Security: Open (No Password)
   - IP: `192.168.4.1`
   - DHCP Range: `192.168.4.2-192.168.4.20`
 

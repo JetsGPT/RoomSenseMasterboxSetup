@@ -87,8 +87,25 @@ EOF
 
 # Enable IP forwarding
 echo -e "${YELLOW}Enabling IP forwarding...${NC}"
-sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
-sysctl -p > /dev/null
+# Create sysctl.conf if it doesn't exist
+if [ ! -f /etc/sysctl.conf ]; then
+    touch /etc/sysctl.conf
+fi
+
+# Check if IP forwarding is already enabled
+if grep -q "^net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+    echo "IP forwarding already enabled in sysctl.conf"
+elif grep -q "^#net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+    # Uncomment if commented
+    sed -i 's/^#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+else
+    # Add if not present
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+fi
+
+# Apply immediately
+sysctl -w net.ipv4.ip_forward=1 > /dev/null
+sysctl -p /etc/sysctl.conf > /dev/null 2>&1 || true
 
 # Setup iptables rules for NAT (if eth0 exists)
 if ip link show eth0 > /dev/null 2>&1; then

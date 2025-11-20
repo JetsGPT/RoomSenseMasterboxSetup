@@ -80,10 +80,10 @@ log "Setting up backend..."
 if [ -d "${BACKEND_DIR}/.git" ]; then
     log "Backend repository exists. Updating..."
     cd "${BACKEND_DIR}"
-    git pull origin main || git pull origin master || true
+    git pull origin ble-discovery-pi || true
 else
     log "Cloning backend repository..."
-    git clone "${BACKEND_REPO}" "${BACKEND_DIR}" || {
+    git clone -b ble-discovery-pi "${BACKEND_REPO}" "${BACKEND_DIR}" || {
         log "Failed to clone backend repository"
         exit 1
     }

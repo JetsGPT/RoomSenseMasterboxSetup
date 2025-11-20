@@ -41,7 +41,7 @@ done
 # Install required packages
 log "Installing required packages..."
 apt-get update -qq
-apt-get install -y -qq git nodejs npm nginx curl
+apt-get install -y -qq git nodejs npm nginx curl avahi-daemon
 
 # Install Docker
 log "Installing Docker..."

@@ -23,6 +23,10 @@ if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Please run as root (sudo ./install.sh)${NC}"
     exit 1
 fi
+echo -e "${YELLOW}Step 0: Setting hostname to 'roomsense'...${NC}"
+hostnamectl set-hostname roomsense
+sed -i 's/127.0.1.1.*/127.0.1.1\troomsense/g' /etc/hosts
+echo "roomsense" > /etc/hostname
 
 echo -e "${YELLOW}Step 1: Setting up Access Point configuration...${NC}"
 chmod +x "${SCRIPT_DIR}/setup_access_point.sh"

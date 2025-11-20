@@ -29,7 +29,7 @@ fi
 # Install required packages
 echo -e "${YELLOW}Installing required packages...${NC}"
 apt-get update
-apt-get install -y hostapd dnsmasq iptables-persistent python3 python3-pip python3-flask iw
+apt-get install -y hostapd dnsmasq iptables-persistent python3 python3-pip python3-flask iw avahi-daemon
 
 # Stop services if running
 systemctl stop hostapd 2>/dev/null || true

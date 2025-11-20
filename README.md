@@ -50,9 +50,9 @@ sudo ./install.sh
 1. On boot, the system detects Wi-Fi credentials
 2. Connects to the configured network
 3. Once connected, automatically:
+   - Installs Docker and Docker Compose
    - Clones/updates the backend repository
-   - Installs backend dependencies
-   - Starts the backend service
+   - Deploys backend using Docker Compose (builds and starts containers)
    - Clones/updates the frontend repository
    - Builds the React application
    - Configures nginx to serve the frontend

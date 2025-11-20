@@ -41,7 +41,35 @@ done
 # Install required packages
 log "Installing required packages..."
 apt-get update -qq
-apt-get install -y -qq git nodejs npm python3 python3-pip python3-venv nginx
+apt-get install -y -qq git nodejs npm nginx curl
+
+# Install Docker
+log "Installing Docker..."
+if ! command -v docker > /dev/null 2>&1; then
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm get-docker.sh
+    usermod -aG docker $USER 2>/dev/null || true
+fi
+
+# Install Docker Compose
+log "Installing Docker Compose..."
+if ! docker compose version > /dev/null 2>&1 && ! command -v docker-compose > /dev/null 2>&1; then
+    # Docker Compose v2 plugin may not be available, install standalone docker-compose
+    log "Installing docker-compose standalone..."
+    DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
+    if [ -z "${DOCKER_COMPOSE_VERSION}" ]; then
+        DOCKER_COMPOSE_VERSION="v2.24.0"  # Fallback version
+    fi
+    curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose 2>/dev/null || true
+    log "Docker Compose installed"
+elif docker compose version > /dev/null 2>&1; then
+    log "Docker Compose v2 plugin is available"
+else
+    log "Docker Compose is already installed"
+fi
 
 # Create directories
 mkdir -p "${BACKEND_DIR}"
@@ -65,61 +93,72 @@ fi
 if [ -d "${WEBSERVER_DIR}" ]; then
     cd "${WEBSERVER_DIR}"
     
-    # Install Python dependencies
-    log "Installing backend dependencies..."
-    if [ -f "requirements.txt" ]; then
-        python3 -m pip install -r requirements.txt --quiet
-    else
-        # Try to install common dependencies
-        python3 -m pip install flask flask-cors gunicorn --quiet || true
+    # Check for compose.yaml or docker-compose.yml
+    COMPOSE_FILE=""
+    if [ -f "compose.yaml" ]; then
+        COMPOSE_FILE="compose.yaml"
+    elif [ -f "docker-compose.yml" ]; then
+        COMPOSE_FILE="docker-compose.yml"
+    elif [ -f "docker-compose.yaml" ]; then
+        COMPOSE_FILE="docker-compose.yaml"
     fi
     
-    # Set up backend service
-    log "Setting up backend service..."
-    
-    # Try to find the main app file
-    APP_FILE="app.py"
-    if [ ! -f "${WEBSERVER_DIR}/${APP_FILE}" ]; then
-        # Try alternative names
-        if [ -f "${WEBSERVER_DIR}/main.py" ]; then
-            APP_FILE="main.py"
-        elif [ -f "${WEBSERVER_DIR}/server.py" ]; then
-            APP_FILE="server.py"
-        elif [ -f "${WEBSERVER_DIR}/wsgi.py" ]; then
-            APP_FILE="wsgi.py"
+    if [ -n "${COMPOSE_FILE}" ]; then
+        log "Found ${COMPOSE_FILE}, deploying with Docker Compose..."
+        
+        # Stop any existing containers
+        log "Stopping existing containers..."
+        docker compose -f "${COMPOSE_FILE}" down 2>/dev/null || docker-compose -f "${COMPOSE_FILE}" down 2>/dev/null || true
+        
+        # Pull latest images and build
+        log "Building and starting containers..."
+        if docker compose version > /dev/null 2>&1; then
+            # Use Docker Compose v2 (plugin)
+            docker compose -f "${COMPOSE_FILE}" up -d --build
+        else
+            # Fall back to docker-compose v1
+            docker-compose -f "${COMPOSE_FILE}" up -d --build
         fi
-    fi
-    
-    # Check if gunicorn is available, otherwise use flask directly
-    if command -v gunicorn > /dev/null 2>&1; then
-        EXEC_START="/usr/bin/python3 -m gunicorn -w 4 -b 0.0.0.0:5000 ${APP_FILE%.py}:app"
-    else
-        EXEC_START="/usr/bin/python3 ${WEBSERVER_DIR}/${APP_FILE}"
-    fi
-    
-    cat > /etc/systemd/system/roomsense-backend.service <<EOF
+        
+        # Wait a moment for containers to start
+        sleep 5
+        
+        # Verify containers are running
+        if docker compose -f "${COMPOSE_FILE}" ps | grep -q "Up" || docker-compose -f "${COMPOSE_FILE}" ps | grep -q "Up"; then
+            log "Backend containers started successfully!"
+        else
+            log "Warning: Containers may not have started properly. Check logs with: docker compose logs"
+        fi
+        
+        # Create systemd service to manage docker-compose on boot
+        log "Setting up systemd service for Docker Compose..."
+        cat > /etc/systemd/system/roomsense-backend.service <<EOF
 [Unit]
-Description=RoomSense Backend Server
-After=network.target
+Description=RoomSense Backend Server (Docker Compose)
+After=docker.service network.target
+Requires=docker.service
 
 [Service]
-Type=simple
-User=root
+Type=oneshot
+RemainAfterExit=yes
 WorkingDirectory=${WEBSERVER_DIR}
-ExecStart=${EXEC_START}
-Restart=always
+ExecStart=/bin/bash -c 'if command -v docker > /dev/null && docker compose version > /dev/null 2>&1; then docker compose -f ${COMPOSE_FILE} up -d; elif command -v docker-compose > /dev/null; then docker-compose -f ${COMPOSE_FILE} up -d; fi'
+ExecStop=/bin/bash -c 'if command -v docker > /dev/null && docker compose version > /dev/null 2>&1; then docker compose -f ${COMPOSE_FILE} down; elif command -v docker-compose > /dev/null; then docker-compose -f ${COMPOSE_FILE} down; fi'
+Restart=on-failure
 RestartSec=10
-Environment="FLASK_APP=${APP_FILE}"
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable roomsense-backend.service
-    systemctl restart roomsense-backend.service
-    
-    log "Backend service started!"
+        systemctl daemon-reload
+        systemctl enable roomsense-backend.service
+        
+        log "Backend service configured to start on boot!"
+    else
+        log "Warning: No compose.yaml or docker-compose.yml found in ${WEBSERVER_DIR}"
+        log "Expected files: compose.yaml, docker-compose.yml, or docker-compose.yaml"
+    fi
 else
     log "Warning: webserver directory not found in backend repository"
 fi

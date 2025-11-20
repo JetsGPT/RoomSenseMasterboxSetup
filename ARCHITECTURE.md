@@ -79,10 +79,10 @@ Boot → check_wifi_setup.sh
 - **Purpose**: Deploy backend and frontend after Wi-Fi connection
 - **Actions**:
   1. Wait for internet connectivity
-  2. Install dependencies (git, nodejs, nginx, python packages)
+  2. Install dependencies (Docker, Docker Compose, git, nodejs, nginx)
   3. Clone/update backend repository
-  4. Install backend dependencies
-  5. Create systemd service for backend
+  4. Deploy backend using Docker Compose (builds and starts containers)
+  5. Create systemd service to manage Docker Compose on boot
   6. Clone/update frontend repository
   7. Build React application
   8. Configure nginx to serve frontend
@@ -126,7 +126,8 @@ Wi-Fi Router
     │
     └─→ wlan0 (DHCP)
         │
-        ├─→ Backend Service (port 5000)
+        ├─→ Docker Container (Backend, port 5000)
+        │   └─→ Managed by Docker Compose
         └─→ Nginx (port 80)
             │
             └─→ Frontend (React App)
@@ -148,10 +149,13 @@ Wi-Fi Router
 - `hostapd` - Access point daemon
 - `dnsmasq` - DHCP/DNS server
 - `python3`, `python3-pip`, `python3-flask` - Captive portal
+- `docker` - Container runtime
+- `docker-compose` or `docker compose` - Container orchestration
 - `git` - Repository cloning
 - `nodejs`, `npm` - Frontend build
 - `nginx` - Web server
 - `iw` - Wi-Fi scanning
+- `curl` - For downloading Docker installation script
 
 ### Python Packages
 - `flask` - Web framework

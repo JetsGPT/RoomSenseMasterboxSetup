@@ -165,7 +165,7 @@ def write_wifi_credentials(ssid, password):
             with open(WPA_SUPPLICANT_CONF, 'r') as f:
                 content = f.read()
         else:
-            content = 'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\nupdate_config=1\ncountry=US\n\n'
+            content = 'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\nupdate_config=1\ncountry=AT\n\n'
         
         # Remove ALL existing network entries (clean slate for new connection)
         lines = content.split('\n')
@@ -253,7 +253,12 @@ def connect():
 
 @app.route('/api/reboot', methods=['POST'])
 def reboot():
-    """API endpoint to reboot the system"""
+    """API endpoint to reboot the system
+    
+    Note: This endpoint is called automatically after successful credential save.
+    In a production environment, consider adding additional validation or
+    rate limiting to prevent abuse.
+    """
     try:
         subprocess.Popen(['sudo', 'reboot'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return jsonify({'success': True, 'message': 'Rebooting...'})

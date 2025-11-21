@@ -4,6 +4,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 INTERFACE="wlan0"
 AP_SSID="RoomSense-Setup"
 AP_PASSWORD="roomsense123"

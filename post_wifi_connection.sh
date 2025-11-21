@@ -59,7 +59,12 @@ if ! command -v docker > /dev/null 2>&1; then
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
     rm get-docker.sh
-    usermod -aG docker $USER 2>/dev/null || true
+    # Add current user to docker group if available
+    if [ -n "$SUDO_USER" ]; then
+        usermod -aG docker "$SUDO_USER" 2>/dev/null || true
+    elif [ -n "$USER" ]; then
+        usermod -aG docker "$USER" 2>/dev/null || true
+    fi
 fi
 
 # Configure and start Avahi (mDNS)

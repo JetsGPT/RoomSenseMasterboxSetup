@@ -40,8 +40,18 @@ done
 
 # Install required packages
 log "Installing required packages..."
-apt-get update -qq
-apt-get install -y -qq git nodejs npm nginx curl avahi-daemon
+# Install Node.js v18 (NodeSource) if not present (Issue 2 Fix)
+if ! command -v node > /dev/null 2>&1 || [ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 18 ]; then
+    log "Installing Node.js v18..."
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    apt-get install -y -qq nodejs
+else
+    log "Node.js $(node -v) is already installed."
+fi
+
+# Install other dependencies
+log "Installing dependencies..."
+apt-get install -y -qq git nginx curl avahi-daemon
 
 # Install Docker
 log "Installing Docker..."
@@ -188,9 +198,14 @@ if [ -d "${FRONTEND_DIR}" ]; then
     cd "${FRONTEND_DIR}"
     
     # Install Node.js dependencies
-    log "Installing frontend dependencies..."
     if [ -f "package.json" ]; then
-        npm install --silent
+        # Check if node_modules exists to avoid re-installing every time (Issue 3 Fix: Idempotency)
+        if [ ! -d "node_modules" ]; then
+            log "Installing frontend dependencies..."
+            npm install --silent
+        else
+            log "Frontend dependencies already installed."
+        fi
         
         # Build the React app
         log "Building React application..."

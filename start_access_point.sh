@@ -64,10 +64,9 @@ cd "${SCRIPT_DIR}"
 pkill -f captive_portal.py || true
 sleep 1
 
-# Start captive portal in background
+# Start captive portal service
 # Note: Running on port 80 requires root privileges
-cd "${SCRIPT_DIR}"
-nohup python3 "${SCRIPT_DIR}/captive_portal.py" > /var/log/captive_portal.log 2>&1 &
+systemctl start roomsense-captive-portal
 sleep 2
 
 # Verify it's running

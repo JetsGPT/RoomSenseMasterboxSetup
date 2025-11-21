@@ -37,6 +37,25 @@ if [ -f "${WPA_SUPPLICANT_CONF}" ]; then
         systemctl disable hostapd 2>/dev/null || true
         systemctl disable dnsmasq 2>/dev/null || true
         
+        # Stop Captive Portal Service (Issue 1 Fix)
+        systemctl stop roomsense-captive-portal 2>/dev/null || true
+        
+        # RESTORE CLIENT MODE NETWORKING
+        log "Restoring client mode networking..."
+        
+        # 1. Clean dhcpcd.conf (remove static IP block if present)
+        if [ -f /etc/dhcpcd.conf ]; then
+            sed -i '/^interface wlan0$/,/^nohook wpa_supplicant$/d' /etc/dhcpcd.conf
+        fi
+        
+        # 2. Flush iptables NAT rules (remove AP NAT)
+        iptables -F
+        iptables -t nat -F
+        iptables-save > /etc/iptables/rules.v4
+        
+        # 3. Ensure IP forwarding is disabled (optional, but good for client mode)
+        sysctl -w net.ipv4.ip_forward=0 > /dev/null 2>&1 || true
+        
         # Try to connect to Wi-Fi
         systemctl restart wpa_supplicant 2>/dev/null || true
         systemctl restart dhcpcd 2>/dev/null || true

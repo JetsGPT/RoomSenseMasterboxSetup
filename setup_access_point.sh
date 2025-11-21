@@ -29,7 +29,7 @@ fi
 # Install required packages
 echo -e "${YELLOW}Installing required packages...${NC}"
 apt-get update
-apt-get install -y hostapd dnsmasq iptables-persistent python3 python3-pip python3-flask iw avahi-daemon
+apt-get install -y hostapd dnsmasq iptables-persistent python3 python3-pip python3-venv iw avahi-daemon
 
 # Stop services if running
 systemctl stop hostapd 2>/dev/null || true
@@ -56,7 +56,13 @@ rsn_pairwise=CCMP
 EOF
 
 # Configure hostapd daemon
-sed -i 's/#DAEMON_CONF=""/DAEMON_CONF="\/etc\/hostapd\/hostapd.conf"/' /etc/default/hostapd
+sed -i 's|^#\?DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
+
+# Backup original dnsmasq config if it exists (Issue 1 Fix)
+if [ ! -f /etc/dnsmasq.conf.orig ]; then
+    cp /etc/dnsmasq.conf /etc/dnsmasq.conf.orig 2>/dev/null || true
+fi
+cp /etc/dnsmasq.conf /etc/dnsmasq.conf.backup
 
 # Configure dnsmasq
 echo -e "${YELLOW}Configuring dnsmasq...${NC}"
@@ -69,22 +75,18 @@ server=8.8.8.8
 log-queries
 log-dhcp
 address=/#/${AP_IP}
+# Captive Portal Triggers (Issue 4 Fix)
+address=/connectivitycheck.gstatic.com/${AP_IP}
+address=/msftconnecttest.com/${AP_IP}
+address=/apple.com/${AP_IP}
 EOF
 
-# Backup original dnsmasq config if it exists
-if [ -f /etc/dnsmasq.conf.orig ]; then
-    cp /etc/dnsmasq.conf /etc/dnsmasq.conf.backup
-else
-    cp /etc/dnsmasq.conf /etc/dnsmasq.conf.orig 2>/dev/null || true
+# Configure static IP for wlan0 (Issue 2 Re-Fix: Ensure clean slate)
+echo -e "${YELLOW}Ensuring clean dhcpcd.conf...${NC}"
+# Remove any existing static IP config for wlan0 to prevent conflicts
+if [ -f /etc/dhcpcd.conf ]; then
+    sed -i '/^interface wlan0$/,/^nohook wpa_supplicant$/d' /etc/dhcpcd.conf
 fi
-
-# Configure static IP for wlan0
-echo -e "${YELLOW}Configuring static IP...${NC}"
-cat > /etc/dhcpcd.conf.ap <<EOF
-interface ${INTERFACE}
-static ip_address=${AP_IP}/24
-nohook wpa_supplicant
-EOF
 
 # Enable IP forwarding
 echo -e "${YELLOW}Enabling IP forwarding...${NC}"
@@ -116,6 +118,40 @@ if ip link show eth0 > /dev/null 2>&1; then
     iptables -A FORWARD -i ${INTERFACE} -o eth0 -j ACCEPT
     iptables-save > /etc/iptables/rules.v4
 fi
+
+# Setup Python Virtual Environment (Issue 5 Fix)
+echo -e "${YELLOW}Setting up Python Virtual Environment...${NC}"
+mkdir -p /opt/roomsense
+python3 -m venv /opt/roomsense/venv
+/opt/roomsense/venv/bin/pip install flask
+
+# Setup Captive Portal Service (Issue 1 Fix: Systemd)
+echo -e "${YELLOW}Setting up Captive Portal Service...${NC}"
+cat > /etc/systemd/system/roomsense-captive-portal.service <<EOF
+[Unit]
+Description=RoomSense Captive Portal
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/roomsense/venv/bin/python3 ${SCRIPT_DIR}/captive_portal.py
+WorkingDirectory=${SCRIPT_DIR}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+# We do NOT enable it, as it is controlled by start_access_point.sh
+systemctl disable roomsense-captive-portal.service 2>/dev/null || true
+
+# Restart Services (Issue 6 Fix)
+echo -e "${YELLOW}Restarting services...${NC}"
+systemctl restart dhcpcd 2>/dev/null || true
+systemctl start dnsmasq
+systemctl start hostapd
 
 echo -e "${GREEN}Access Point configuration complete!${NC}"
 echo -e "${YELLOW}SSID: ${AP_SSID}${NC}"

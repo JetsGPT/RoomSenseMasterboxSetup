@@ -12,7 +12,7 @@ class NetworkManager:
     def run_command(self, command):
         try:
             result = subprocess.run(
-                command, capture_output=True, text=True, check=True, timeout=30
+                command, capture_output=True, text=True, check=True, timeout=10
             )
             return result.stdout.strip()
         except subprocess.TimeoutExpired:
@@ -24,48 +24,34 @@ class NetworkManager:
 
     def scan_wifi(self):
         """Scans for available WiFi networks."""
-        # Rescan first
-        self.run_command(['nmcli', 'device', 'wifi', 'rescan'])
-        time.sleep(2) # Give it a moment
+        # We skip the explicit rescan because it can block for a long time.
+        # nmcli usually does background scanning anyway.
         
         # Get list with fields: SSID, SIGNAL, SECURITY
+        # We reduce timeout to 10s to fail fast if nmcli is stuck
         output = self.run_command(['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY,BARS', 'device', 'wifi', 'list'])
         
         networks = []
         if output:
             seen_ssids = set()
             for line in output.split('\n'):
-                parts = line.replace(r'\:', '|COLON|').split(':') # Handle escaped colons if any, though -t usually avoids
-                # Actually nmcli -t uses : as separator, so we need to be careful if SSID has :
-                # Better approach: use fixed width or specific formatting if possible, but -t is standard.
-                # Let's try a safer parsing strategy or just assume standard output.
-                # Re-implementing with a simpler split, assuming SSID is the first field and might contain colons? 
-                # nmcli -t escapes colons in values with \.
-                
-                # Let's just use the python split and basic cleaning for now.
-                # A robust way is to use --fields and handle the output carefully.
-                
-                # Re-parsing:
-                # SSID:SIGNAL:SECURITY:BARS
-                # We can't easily split by : if SSID has it. 
-                # Let's try a different format that is easier to parse, or just handle the common case.
-                
-                # Alternative: use -f SSID,SIGNAL,SECURITY,BARS and hope for the best or use Python to parse the escaped string.
-                # For this MVP, we will assume SSIDs don't have colons or we split from the right for the known fields.
-                
-                # SSID can be empty for hidden networks
                 if not line: continue
                 
-                # Split from right to get BARS, SECURITY, SIGNAL
-                # The remainder on the left is SSID
                 try:
-                    # This is a bit hacky but works for most cases
                     # nmcli -t output: SSID:SIGNAL:SECURITY:BARS
                     # We expect at least 3 colons.
-                    if line.count(':') < 3:
+                    # If SSID contains colons, they are escaped as \:
+                    # We can use a regex or just robust splitting.
+                    # Since we requested specific fields, let's try to be robust.
+                    
+                    # Simple split might fail if SSID has colon.
+                    # Let's use rsplit for the last 3 fields which are known to not have colons (mostly)
+                    # SIGNAL is int, BARS is string, SECURITY is string.
+                    
+                    parts = line.rsplit(':', 3)
+                    if len(parts) < 4:
                         continue
                         
-                    parts = line.rsplit(':', 3)
                     ssid = parts[0].replace('\\:', ':')
                     signal = parts[1]
                     security = parts[2]
@@ -85,7 +71,7 @@ class NetworkManager:
                 except Exception as e:
                     logger.warning(f"Failed to parse line: {line} - {e}")
                     
-        return sorted(networks, key=lambda x: int(x['signal']), reverse=True)
+        return sorted(networks, key=lambda x: int(x['signal']) if x['signal'].isdigit() else 0, reverse=True)
 
     def is_connected(self):
         """Checks if connected to a client network (not AP)."""

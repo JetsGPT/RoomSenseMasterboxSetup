@@ -29,8 +29,11 @@ def captive_portal_check():
 
 @app.route('/api/scan')
 def scan():
-    networks = nm.scan_wifi()
-    return jsonify(networks)
+    try:
+        networks = nm.scan_wifi()
+        return jsonify(networks)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/connect', methods=['POST'])
 def connect():
@@ -93,4 +96,4 @@ def check_and_start_ap():
 if __name__ == '__main__':
     # Ensure we are accessible
     check_and_start_ap()
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=80, threaded=True)

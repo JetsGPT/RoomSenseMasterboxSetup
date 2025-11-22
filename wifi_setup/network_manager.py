@@ -12,9 +12,12 @@ class NetworkManager:
     def run_command(self, command):
         try:
             result = subprocess.run(
-                command, capture_output=True, text=True, check=True
+                command, capture_output=True, text=True, check=True, timeout=30
             )
             return result.stdout.strip()
+        except subprocess.TimeoutExpired:
+            logger.error(f"Command timed out: {command}")
+            return None
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed: {e.cmd}. Output: {e.output}. Stderr: {e.stderr}")
             return None

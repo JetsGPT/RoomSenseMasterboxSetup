@@ -63,7 +63,7 @@ echo "Installing systemd service..."
 cp $INSTALL_DIR/roomsense-setup.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable roomsense-setup.service
-systemctl start roomsense-setup.service
+# Service will start on reboot to avoid disconnecting SSH if running over WiFi
 
 echo "Installation Complete! The system will now manage WiFi connections."
 echo "Rebooting in 5 seconds to apply all changes..."

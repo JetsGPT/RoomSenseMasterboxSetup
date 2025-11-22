@@ -1,96 +1,71 @@
 #!/bin/bash
-# Installation script for RoomSense Pi Onboarding
-# Run this script to set up the entire system
 
-set -e
+# RoomSense WiFi Setup Installer
+# Run this as root
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}RoomSense Pi Onboarding Setup${NC}"
-echo -e "${BLUE}========================================${NC}"
-echo ""
-
-# Check if running as root
 if [ "$EUID" -ne 0 ]; then 
-    echo -e "${RED}Please run as root (sudo ./install.sh)${NC}"
-    exit 1
+  echo "Please run as root"
+  exit 1
 fi
-echo -e "${YELLOW}Step 0: Setting hostname to 'roomsense'...${NC}"
-hostnamectl set-hostname roomsense
-sed -i 's/127.0.1.1.*/127.0.1.1\troomsense/g' /etc/hosts
-echo "roomsense" > /etc/hostname
 
-echo -e "${YELLOW}Step 1: Setting up Access Point configuration...${NC}"
-chmod +x "${SCRIPT_DIR}/setup_access_point.sh"
-"${SCRIPT_DIR}/setup_access_point.sh"
+echo "Starting RoomSense Setup installation..."
 
-echo -e "${YELLOW}Step 2: Installing systemd service for Wi-Fi check...${NC}"
-cat > /etc/systemd/system/roomsense-wifi-setup.service <<EOF
-[Unit]
-Description=RoomSense Wi-Fi Setup Check
-After=network.target
+# 1. Install Dependencies
+echo "Installing system dependencies..."
+apt-get update
+apt-get install -y python3-venv python3-pip network-manager dnsmasq
 
-[Service]
-Type=oneshot
-ExecStart=${SCRIPT_DIR}/check_wifi_setup.sh
-RemainAfterExit=yes
+# 2. Setup Directory
+INSTALL_DIR="/opt/roomsense/wifi_setup"
+echo "Setting up directory at $INSTALL_DIR..."
+mkdir -p $INSTALL_DIR
+cp -r wifi_setup/* $INSTALL_DIR/
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# 3. Setup Python Environment
+echo "Setting up Python virtual environment..."
+python3 -m venv $INSTALL_DIR/venv
+$INSTALL_DIR/venv/bin/pip install flask
 
+# 4. Configure NetworkManager & Dnsmasq for Captive Portal
+echo "Configuring NetworkManager..."
+# Ensure NetworkManager is managing everything
+# We need to enable dnsmasq in NetworkManager if not already
+if ! grep -q "dns=dnsmasq" /etc/NetworkManager/NetworkManager.conf; then
+    echo "Enabling dnsmasq in NetworkManager..."
+    # Backup
+    cp /etc/NetworkManager/NetworkManager.conf /etc/NetworkManager/NetworkManager.conf.bak
+    # Add [main] dns=dnsmasq if [main] exists, else append. 
+    # Simplest way for now:
+    # sed -i '/\[main\]/a dns=dnsmasq' /etc/NetworkManager/NetworkManager.conf
+    # But let's be safer. 
+    # Actually, for the "Shared" connection, NM spawns a separate dnsmasq instance.
+    # We can drop our config in /etc/NetworkManager/dnsmasq-shared.d/
+    :
+fi
+
+mkdir -p /etc/NetworkManager/dnsmasq-shared.d/
+cp $INSTALL_DIR/dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
+
+# 5. Clear Existing WiFi Connections (As requested)
+echo "Clearing existing WiFi connections..."
+nmcli --fields UUID,TYPE connection show | grep wifi | awk '{print $1}' | while read uuid; do
+    nmcli connection delete "$uuid"
+done
+
+# 6. Create Initial Hotspot (if not exists)
+# The python script handles this logic on startup usually, but we can pre-create it.
+# However, the requirement says "If no wifi connection is saved... it should create its own hotspot".
+# Since we just deleted all connections, the python script will see no connections and create the hotspot.
+# So we don't need to do it here explicitly, but we can to be sure.
+
+# 7. Install Systemd Service
+echo "Installing systemd service..."
+cp $INSTALL_DIR/roomsense-setup.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable roomsense-wifi-setup.service
+systemctl enable roomsense-setup.service
+systemctl start roomsense-setup.service
 
-echo -e "${YELLOW}Step 3: Making scripts executable...${NC}"
-chmod +x "${SCRIPT_DIR}/start_access_point.sh"
-chmod +x "${SCRIPT_DIR}/check_wifi_setup.sh"
-chmod +x "${SCRIPT_DIR}/post_wifi_connection.sh"
-chmod +x "${SCRIPT_DIR}/captive_portal.py"
-
-echo -e "${YELLOW}Step 4: Creating log directories...${NC}"
-mkdir -p /var/log
-touch /var/log/wifi_setup.log
-touch /var/log/post_wifi_setup.log
-touch /var/log/captive_portal.log
-
-echo -e "${YELLOW}Step 5: Clearing existing Wi-Fi credentials...${NC}"
-# Backup existing config if it exists
-if [ -f "/etc/wpa_supplicant/wpa_supplicant.conf" ]; then
-    cp /etc/wpa_supplicant/wpa_supplicant.conf /etc/wpa_supplicant/wpa_supplicant.conf.backup.$(date +%Y%m%d_%H%M%S)
-    echo -e "${YELLOW}Backed up existing Wi-Fi config${NC}"
-fi
-
-# Create minimal wpa_supplicant.conf with no networks
-cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-country=AT
-
-EOF
-
-chmod 600 /etc/wpa_supplicant/wpa_supplicant.conf
-echo -e "${GREEN}Wi-Fi credentials cleared${NC}"
-
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Installation complete!${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo -e "${YELLOW}Wi-Fi credentials have been cleared.${NC}"
-echo -e "${YELLOW}On reboot, the system will start an access point named 'RoomSense-Setup'.${NC}"
-echo ""
-echo -e "${BLUE}Rebooting in 5 seconds...${NC}"
-echo -e "${BLUE}(Press Ctrl+C to cancel)${NC}"
+echo "Installation Complete! The system will now manage WiFi connections."
+echo "Rebooting in 5 seconds to apply all changes..."
 sleep 5
-
-echo -e "${YELLOW}Rebooting now...${NC}"
 reboot
-

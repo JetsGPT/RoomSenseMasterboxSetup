@@ -1,0 +1,15 @@
+[Unit]
+Description=RoomSense WiFi Setup Service
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/roomsense/wifi_setup
+ExecStart=/opt/roomsense/wifi_setup/venv/bin/python app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

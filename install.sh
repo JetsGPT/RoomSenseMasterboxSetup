@@ -46,11 +46,10 @@ fi
 mkdir -p /etc/NetworkManager/dnsmasq-shared.d/
 cp $INSTALL_DIR/dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
 
-# 5. Clear Existing WiFi Connections (As requested)
-echo "Clearing existing WiFi connections..."
-nmcli --fields UUID,TYPE connection show | grep wifi | awk '{print $1}' | while read uuid; do
-    nmcli connection delete "$uuid"
-done
+# 5. Signal Factory Reset for Next Boot
+echo "Signaling factory reset..."
+touch $INSTALL_DIR/.factory_reset
+echo "A factory reset (clearing all WiFi connections) will be performed on the next boot."
 
 # 6. Create Initial Hotspot (if not exists)
 # The python script handles this logic on startup usually, but we can pre-create it.

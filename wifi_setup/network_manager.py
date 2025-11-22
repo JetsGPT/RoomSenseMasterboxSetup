@@ -148,3 +148,14 @@ class NetworkManager:
     def get_active_connection(self):
         output = self.run_command(['nmcli', '-t', '-f', 'NAME', 'connection', 'show', '--active'])
         return output.strip() if output else None
+
+    def delete_all_connections(self):
+        """Deletes all WiFi connections."""
+        # Get all wifi connection UUIDs
+        output = self.run_command(['nmcli', '-t', '-f', 'UUID,TYPE', 'connection', 'show'])
+        if output:
+            for line in output.split('\n'):
+                if ':802-11-wireless' in line or ':wifi' in line: # nmcli type is 802-11-wireless or wifi
+                    uuid = line.split(':')[0]
+                    logger.info(f"Deleting connection {uuid}")
+                    self.run_command(['nmcli', 'connection', 'delete', uuid])

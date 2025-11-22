@@ -70,6 +70,19 @@ def status():
 
 def check_and_start_ap():
     """Checks connection status on startup and creates AP if needed."""
+    # Check for factory reset marker
+    if os.path.exists('.factory_reset'):
+        print("Factory reset marker found. Clearing all WiFi connections...")
+        nm.delete_all_connections()
+        try:
+            os.remove('.factory_reset')
+        except OSError:
+            pass
+        # After clearing, we definitely need to start AP
+        print("Starting Hotspot after factory reset...")
+        nm.create_ap("RoomSenseSetup", None)
+        return
+
     connected, name = nm.is_connected()
     if connected:
         print(f"Connected to {name}. No need to start AP.")

@@ -51,8 +51,27 @@ fi
 echo "Starting Backend..."
 cd "$INSTALL_DIR/backend/webserver"
 
-# Initialize Docker Swarm if not already part of one
-if ! docker info | grep -q "Swarm: active"; then
+# Initialize Docker Swarm
+# Check if Swarm is active
+SWARM_STATUS=$(docker info --format '{{.Swarm.LocalNodeState}}')
+IS_MANAGER=$(docker info --format '{{.Swarm.ControlAvailable}}')
+
+echo "Docker Swarm Status: $SWARM_STATUS (Manager: $IS_MANAGER)"
+
+if [ "$SWARM_STATUS" = "active" ] && [ "$IS_MANAGER" = "true" ]; then
+    echo "Swarm is already initialized and active manager."
+elif [ "$SWARM_STATUS" = "active" ] && [ "$IS_MANAGER" != "true" ]; then
+    echo "Node is in Swarm but NOT a manager. Leaving..."
+    docker swarm leave --force
+    echo "Initializing new Swarm..."
+    # Determine the IP address of wlan0 or fall back to default route
+    ADVERTISE_ADDR=$(ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    if [ -z "$ADVERTISE_ADDR" ]; then
+        docker swarm init
+    else
+        docker swarm init --advertise-addr $ADVERTISE_ADDR
+    fi
+else
     echo "Initializing Docker Swarm..."
     # Determine the IP address of wlan0 or fall back to default route
     ADVERTISE_ADDR=$(ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)

@@ -47,7 +47,25 @@ else
     git clone $FRONTEND_REPO "$INSTALL_DIR/frontend"
 fi
 
-# 3. Backend Setup (Docker Swarm)
+# 3. Frontend Build & Deploy to Backend (Express)
+echo "Building Frontend..."
+cd "$INSTALL_DIR/frontend/roomsenseapp"
+npm install
+npm run build
+
+echo "Deploying Frontend to Backend (Express)..."
+# Destination: The 'public' folder of the Express app inside the cloned backend repo.
+# Note: This assumes the Docker container mounts this directory or has verified permissions.
+DEPLOY_TARGET="$INSTALL_DIR/backend/webserver/src/public"
+mkdir -p "$DEPLOY_TARGET"
+
+# Copy build artifacts (Vite uses 'dist')
+# We use rsync or cp. cp -r is simpler.
+cp -r "$INSTALL_DIR/frontend/roomsenseapp/dist/"* "$DEPLOY_TARGET/"
+
+echo "Frontend deployed. Express should now serve the app."
+
+# 4. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
 cd "$INSTALL_DIR/backend/webserver"
 
@@ -86,48 +104,6 @@ chmod +x scripts/init/start.sh
 # Run the start script
 # We can't be sure if we are in the right relative path, but the script handles it via SCRIPT_DIR
 ./scripts/init/start.sh
-
-# 4. Frontend Build & Serve
-echo "Building Frontend..."
-# The frontend code is in the 'roomsenseapp' folder inside the repo
-cd "$INSTALL_DIR/frontend/roomsenseapp"
-npm install
-npm run build
-
-echo "Configuring Nginx to serve Frontend..."
-# Assuming 'dist' is the build output (default for Vite)
-BUILD_DIR="$INSTALL_DIR/frontend/roomsenseapp/dist"
-
-# Simple Nginx Config
-cat <<EOF > /etc/nginx/sites-available/default
-server {
-    listen 80 default_server;
-    server_name _;
-    root $BUILD_DIR;
-    index index.html;
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-}
-EOF
-
-# 4. Frontend Build & Deploy to Backend (Express)
-echo "Building Frontend..."
-cd "$INSTALL_DIR/frontend/roomsenseapp"
-npm install
-npm run build
-
-echo "Deploying Frontend to Backend (Express)..."
-# Destination: The 'public' folder of the Express app inside the cloned backend repo.
-# Note: This assumes the Docker container mounts this directory or has verified permissions.
-DEPLOY_TARGET="$INSTALL_DIR/backend/webserver/src/public"
-mkdir -p "$DEPLOY_TARGET"
-
-# Copy build artifacts (Vite uses 'dist')
-# We use rsync or cp. cp -r is simpler.
-cp -r "$INSTALL_DIR/frontend/roomsenseapp/dist/"* "$DEPLOY_TARGET/"
-
-echo "Frontend deployed. Express should now serve the app."
 
 # 5. Transition to Production
 echo "Transitioning to Production Mode..."

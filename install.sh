@@ -17,17 +17,25 @@ apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm g
 
 # 2. Setup Directory
 INSTALL_DIR="/opt/roomsense/wifi_setup"
-SCRIPTS_DIR="/opt/roomsense/scripts"
-echo "Setting up directory at $INSTALL_DIR..."
-mkdir -p $INSTALL_DIR
-mkdir -p $SCRIPTS_DIR
+GLOBAL_SCRIPTS_DIR="/opt/roomsense/scripts" # Renamed to avoid conflict with local var
+SCRIPT_LOCATION="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-cp -r wifi_setup/* $INSTALL_DIR/
+echo "Setting up directory at $INSTALL_DIR..."
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$GLOBAL_SCRIPTS_DIR"
+
+if [ -d "$SCRIPT_LOCATION/wifi_setup" ]; then
+    cp -r "$SCRIPT_LOCATION/wifi_setup/"* "$INSTALL_DIR/"
+else
+    echo "Error: wifi_setup directory not found at $SCRIPT_LOCATION/wifi_setup"
+    exit 1
+fi
+
 # Move scripts to scripts dir
-mv $INSTALL_DIR/provision.sh $SCRIPTS_DIR/
-mv $INSTALL_DIR/wifi_watchdog.sh $SCRIPTS_DIR/
-chmod +x $SCRIPTS_DIR/provision.sh
-chmod +x $SCRIPTS_DIR/wifi_watchdog.sh
+mv "$INSTALL_DIR/provision.sh" "$GLOBAL_SCRIPTS_DIR/"
+mv "$INSTALL_DIR/wifi_watchdog.sh" "$GLOBAL_SCRIPTS_DIR/"
+chmod +x "$GLOBAL_SCRIPTS_DIR/provision.sh"
+chmod +x "$GLOBAL_SCRIPTS_DIR/wifi_watchdog.sh"
 
 # 3. Setup Python Environment
 echo "Setting up Python virtual environment..."
@@ -64,7 +72,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=$SCRIPTS_DIR/wifi_watchdog.sh
+ExecStart=$GLOBAL_SCRIPTS_DIR/wifi_watchdog.sh
 EOF
 
 cat <<EOF > /etc/systemd/system/wifi-watchdog.timer

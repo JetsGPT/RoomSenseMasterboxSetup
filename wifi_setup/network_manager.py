@@ -10,18 +10,26 @@ class NetworkManager:
     def __init__(self):
         pass
 
-    def run_command(self, command):
+    def run_command(self, command, sensitive=False):
         try:
-            logger.info(f"Running: {' '.join(command)}")
+            if sensitive:
+                 # Log only the first argument (executable) and hide the rest
+                 logger.info(f"Running: {command[0]} [ARGS REDACTED]")
+            else:
+                 logger.info(f"Running: {' '.join(command)}")
+                 
             result = subprocess.run(
                 command, capture_output=True, text=True, check=True, timeout=30
             )
             return result.stdout.strip()
         except subprocess.TimeoutExpired:
-            logger.error(f"Command timed out: {command}")
+            logger.error(f"Command timed out: {command[0]}...")
             return None
         except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {e.cmd}. Output: {e.output}. Stderr: {e.stderr}")
+            if sensitive:
+                logger.error(f"Command failed: {e.cmd[0]}... Stderr: {e.stderr}")
+            else:
+                logger.error(f"Command failed: {e.cmd}. Output: {e.output}. Stderr: {e.stderr}")
             return None
         except Exception as e:
             logger.error(f"Unexpected error running command: {e}")
@@ -103,7 +111,8 @@ class NetworkManager:
         # We give it a generous timeout because DHCP can take time
         # but nmcli connect waits for activation.
         success = False
-        result = self.run_command(cmd)
+        # Hide password in logs
+        result = self.run_command(cmd, sensitive=True if password else False)
         
         if result:
             # Check internet verification
@@ -152,7 +161,7 @@ class NetworkManager:
         
         if password:
              self.run_command(['nmcli', 'connection', 'modify', ssid, 'wifi-sec.key-mgmt', 'wpa-psk'])
-             self.run_command(['nmcli', 'connection', 'modify', ssid, 'wifi-sec.psk', password])
+             self.run_command(['nmcli', 'connection', 'modify', ssid, 'wifi-sec.psk', password], sensitive=True)
              
         self.run_command(['nmcli', 'connection', 'up', ssid])
 
@@ -163,3 +172,16 @@ class NetworkManager:
                 if 'wireless' in line or 'wifi' in line:
                     uuid = line.split(':')[0]
                     self.run_command(['nmcli', 'connection', 'delete', uuid])
+
+    def is_connected(self):
+        """Returns (bool, ssid) if connected to a wifi network."""
+        # nmcli -t -f TYPE,STATE,CONNECTION device
+        output = self.run_command(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device'])
+        if output:
+            for line in output.split('\n'):
+                if not line: continue
+                parts = line.split(':')
+                # wifi:connected:MySSID
+                if len(parts) >= 3 and parts[0] == 'wifi' and parts[1] == 'connected':
+                     return True, parts[2]
+        return False, None

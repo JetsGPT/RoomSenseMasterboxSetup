@@ -67,7 +67,7 @@ def connect():
                 subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
                                  stdout=subprocess.DEVNULL, 
                                  stderr=subprocess.DEVNULL,
-                                 preexec_fn=os.setpgrp)
+                                 start_new_session=True)
             except Exception as e:
                 logger.error(f"Failed to start provisioning: {e}")
                 
@@ -90,7 +90,11 @@ def check_and_start_ap():
     # Check for factory reset marker
     if os.path.exists('.factory_reset'):
         logger.info("Factory reset marker found. Clearing all WiFi connections...")
-        nm.delete_all_connections()
+        try:
+            nm.delete_all_connections()
+        except:
+             pass # Fail safe
+             
         try:
             os.remove('.factory_reset')
         except OSError:
@@ -102,12 +106,12 @@ def check_and_start_ap():
 
     # Check internet connectivity or active wifi connection
     if nm.is_connected_to_internet():
-         logger.info("Internet connected. No need to start AP.")
-         # If we are here, it means the setup service is running but we have internet.
-         # This might happen if provisioning failed or wasn't run.
-         # We could auto-trigger provisioning? 
-         # Or just leave it alone.
-         pass
+         logger.info("Internet connected. No need to start AP. Switching to Production...")
+         # Verification: Start Nginx (which serves the frontend)
+         subprocess.run(['systemctl', 'start', 'nginx'], check=False)
+         # Stop self
+         subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
+         return
     else:
         # Check if we are connected to a router at least (but maybe no internet)
         connected, name = nm.is_connected()

@@ -14,6 +14,9 @@ exec > >(tee -a $LOG_FILE) 2>&1
 echo "Starting Provisioning Process..."
 date
 
+# Exit strictly on any error
+set -e
+
 # 1. Wait for Internet
 echo "Waiting for internet connection..."
 while ! ping -c 1 -W 1 8.8.8.8; do

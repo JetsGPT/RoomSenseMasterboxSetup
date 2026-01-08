@@ -50,6 +50,18 @@ fi
 # 3. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
 cd "$INSTALL_DIR/backend/webserver"
+
+# Initialize Docker Swarm if not already part of one
+if ! docker info | grep -q "Swarm: active"; then
+    echo "Initializing Docker Swarm..."
+    # Determine the IP address of wlan0 or fall back to default route
+    ADVERTISE_ADDR=$(ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+    if [ -z "$ADVERTISE_ADDR" ]; then
+        docker swarm init
+    else
+        docker swarm init --advertise-addr $ADVERTISE_ADDR
+    fi
+fi
 # Ensure executable
 chmod +x scripts/init/start.sh
 # Run the start script

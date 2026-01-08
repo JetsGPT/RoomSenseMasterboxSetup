@@ -6,18 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RoomSense Setup</title>
     <style>
-        :root {
-            --primary: #2563eb;
-            --bg: #f8fafc;
-            --card: #ffffff;
-            --text: #1e293b;
-            --border: #e2e8f0;
-        }
-
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
+            background: #f5f5f7;
+            color: #333;
             margin: 0;
             padding: 20px;
             display: flex;
@@ -27,45 +19,37 @@
         }
 
         .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 400px;
         }
 
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
         h1 {
-            font-size: 24px;
-            margin: 0 0 10px 0;
-        }
-
-        p {
-            margin: 0;
-            color: #64748b;
-        }
-
-        .card {
-            background: var(--card);
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            overflow: hidden;
+            text-align: center;
+            color: #1d1d1f;
+            margin-bottom: 1.5rem;
         }
 
         .network-list {
             list-style: none;
             padding: 0;
             margin: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
         }
 
         .network-item {
-            padding: 15px 20px;
-            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: pointer;
             transition: background 0.2s;
         }
 
@@ -74,91 +58,88 @@
         }
 
         .network-item:hover {
-            background: #f1f5f9;
+            background: #f5f5f7;
         }
 
-        .ssid {
+        .network-ssid {
             font-weight: 500;
         }
 
-        .signal-icon {
-            color: #64748b;
-        }
-
-        .btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            width: 100%;
-            cursor: pointer;
-            margin-top: 20px;
-        }
-
-        .btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
-        /* Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            z-index: 100;
+        .network-signal {
+            color: #86868b;
+            font-size: 0.9em;
         }
 
         .modal {
-            background: var(--card);
-            padding: 24px;
-            border-radius: 12px;
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            max-width: 320px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
         }
 
-        .modal h3 {
-            margin-top: 0;
+        .modal-content {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 320px;
         }
 
         input[type="password"] {
             width: 100%;
-            padding: 10px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            margin: 10px 0 20px 0;
-            box-sizing: border-box;
+            padding: 12px;
+            margin: 16px 0;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
             font-size: 16px;
+            box-sizing: border-box;
         }
 
-        .modal-actions {
-            display: flex;
-            gap: 10px;
+        .btn {
+            background: #0071e3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
         }
 
-        .btn-secondary {
-            background: #e2e8f0;
-            color: var(--text);
+        .btn:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+
+        .btn-cancel {
+            background: #f5f5f7;
+            color: #1d1d1f;
+            margin-top: 8px;
+        }
+
+        #status-message {
+            text-align: center;
+            margin-top: 16px;
+            color: #86868b;
+            display: none;
         }
 
         .spinner {
             border: 3px solid #f3f3f3;
-            border-top: 3px solid var(--primary);
+            border-top: 3px solid #0071e3;
             border-radius: 50%;
             width: 20px;
             height: 20px;
             animation: spin 1s linear infinite;
-            margin: 20px auto;
-            display: none;
+            margin: 0 auto;
         }
 
         @keyframes spin {
@@ -171,356 +152,188 @@
             }
         }
 
-        .status-message {
-            text-align: center;
-            margin-top: 10px;
-            font-weight: 500;
+        /* Setup Mode Warning */
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            border: 1px solid #ffeeba;
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <header>
-            <h1>Connect to WiFi</h1>
-            <p>Select a network to connect your RoomSense device.</p>
-        </header>
+        <h1>RoomSense Setup</h1>
 
-        <div class="card">
-            <div id="loading" style="padding: 20px; text-align: center;">
-                Scanning for networks...
-            </div>
-            <ul class="network-list" id="networkList"></ul>
+        <div class="warning">
+            <strong>Note:</strong> Connecting will disconnect this device from the Hotspot. If successful, the device
+            will reboot. If checks fail, the Hotspot will reappear.
         </div>
 
-        <button class="btn" onclick="scanNetworks()">Rescan</button>
+        <div id="loading">
+            <div class="spinner"></div>
+            <p style="text-align: center; margin-top: 10px;">Scanning for networks...</p>
+        </div>
+
+        <ul id="network-list" class="network-list" style="display: none;"></ul>
+        <p id="error-message" style="color: red; text-align: center; display: none;"></p>
     </div>
 
-    <div class="modal-overlay" id="passwordModal">
-        <div class="modal">
-            <h3 id="modalTitle">Enter Password</h3>
-            <p id="selectedSSID" style="margin-bottom: 10px; font-weight: bold;"></p>
-            <input type="password" id="passwordInput" placeholder="Password">
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                <button class="btn" onclick="connect()">Connect</button>
-            </div>
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="selected-ssid"></h3>
+            <input type="password" id="password-input" placeholder="Enter WiFi Password">
+            <button id="connect-btn" class="btn">Connect</button>
+            <button id="cancel-btn" class="btn btn-cancel">Cancel</button>
         </div>
     </div>
 
-    <div class="modal-overlay" id="statusModal">
-        <div class="modal" style="text-align: center;">
+    <div id="connecting-modal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <div class="spinner" style="width: 40px; height: 40px; margin-bottom: 16px;"></div>
             <h3>Connecting...</h3>
-            <div class="spinner" id="statusSpinner" style="display: block;"></div>
-            <p id="statusText">Please wait while we connect to the network.</p>
+            <p>Please wait. The device is verifying the connection.</p>
+            <p style="font-size: 0.8em; color: #666;">The hotspot may disappear. If connection succeeds, you can close
+                this window.</p>
         </div>
     </div>
 
     <script>
-        let selectedNetwork = null;
+        const networkList = document.getElementById('network-list');
+        const loading = document.getElementById('loading');
+        const passwordModal = document.getElementById('password-modal');
+        const connectingModal = document.getElementById('connecting-modal');
+        const passwordInput = document.getElementById('password-input');
+        const errorMsg = document.getElementById('error-message');
+        let selectedSSID = '';
 
         async function scanNetworks() {
-            const list = document.getElementById('networkList');
-            const loading = document.getElementById('loading');
-
-            list.innerHTML = '';
-            loading.style.display = 'block';
-
             try {
                 const response = await fetch('/api/scan');
                 const networks = await response.json();
 
                 loading.style.display = 'none';
+                networkList.innerHTML = '';
+                networkList.style.display = 'block';
+
+                if (networks.length === 0) {
+                    networkList.innerHTML = '<li style="padding:16px; text-align:center;">No networks found</li>';
+                    return;
+                }
 
                 networks.forEach(net => {
                     const li = document.createElement('li');
                     li.className = 'network-item';
                     li.innerHTML = `
-                        <span class="ssid">${net.ssid}</span>
-                        <span class="signal-icon">${net.bars}</span>
+                        <span class="network-ssid">${net.ssid}</span>
+                        <span class="network-signal">Signal: ${net.signal}% ${net.security ? '🔒' : '🔓'}</span>
                     `;
-                    li.onclick = () => openModal(net.ssid);
-                    list.appendChild(li);
+                    li.onclick = () => showPasswordModal(net.ssid, net.security);
+                    networkList.appendChild(li);
                 });
             } catch (e) {
-                loading.innerText = "Failed to scan. Please try again.";
+                loading.style.display = 'none';
+                errorMsg.textContent = 'Failed to scan networks. Reload to try again.';
+                errorMsg.style.display = 'block';
             }
         }
 
-        function openModal(ssid) {
-            selectedNetwork = ssid;
-            document.getElementById('selectedSSID').innerText = ssid;
-            document.getElementById('passwordInput').value = '';
-            document.getElementById('passwordModal').style.display = 'flex';
-            document.getElementById('passwordInput').focus();
+        function showPasswordModal(ssid, security) {
+            selectedSSID = ssid;
+            document.getElementById('selected-ssid').textContent = ssid;
+            passwordInput.value = '';
+
+            if (!security || security === 'NONE') {
+                // No password needed
+                connectToNetwork(ssid, null);
+            } else {
+                passwordModal.style.display = 'flex';
+                passwordInput.focus();
+            }
         }
 
-        function closeModal() {
-            document.getElementById('passwordModal').style.display = 'none';
-            selectedNetwork = null;
-        }
+        document.getElementById('cancel-btn').onclick = () => {
+            passwordModal.style.display = 'none';
+        };
 
-        async function connect() {
-            const password = document.getElementById('passwordInput').value;
-            closeModal();
+        document.getElementById('connect-btn').onclick = () => {
+            connectToNetwork(selectedSSID, passwordInput.value);
+        };
 
-            document.getElementById('statusModal').style.display = 'flex';
-            document.getElementById('statusText').innerText = `Connecting to ${selectedNetwork}...`;
+        async function connectToNetwork(ssid, password) {
+            passwordModal.style.display = 'none';
+            connectingModal.style.display = 'flex';
 
             try {
-                await fetch('/api/connect', {
-                    background: #f1f5f9;
-                }
-
-                    .ssid {
-                        font- weight: 500;
-            }
-
-        .signal - icon {
-                color: #64748b;
-            }
-
-        .btn {
-                background: var(--primary);
-                color: white;
-                border: none;
-                padding: 12px 20px;
-                border - radius: 8px;
-                font - size: 16px;
-                font - weight: 500;
-                width: 100 %;
-                cursor: pointer;
-                margin - top: 20px;
-            }
-
-        .btn:disabled {
-                opacity: 0.7;
-                cursor: not - allowed;
-            }
-
-        /* Modal */
-        .modal - overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.5);
-                display: none;
-                align - items: center;
-                justify - content: center;
-                padding: 20px;
-                z - index: 100;
-            }
-
-        .modal {
-                background: var(--card);
-                padding: 24px;
-                border - radius: 12px;
-                width: 100 %;
-                max - width: 320px;
-            }
-
-        .modal h3 {
-                margin - top: 0;
-            }
-
-            input[type = "password"] {
-                width: 100 %;
-                padding: 10px;
-                border: 1px solid var(--border);
-                border - radius: 6px;
-                margin: 10px 0 20px 0;
-                box - sizing: border - box;
-                font - size: 16px;
-            }
-
-        .modal - actions {
-                display: flex;
-                gap: 10px;
-            }
-
-        .btn - secondary {
-                background: #e2e8f0;
-                color: var(--text);
-            }
-
-        .spinner {
-                border: 3px solid #f3f3f3;
-                border - top: 3px solid var(--primary);
-                border - radius: 50 %;
-                width: 20px;
-                height: 20px;
-                animation: spin 1s linear infinite;
-                margin: 20px auto;
-                display: none;
-            }
-
-            @keyframes spin {
-                0 % {
-                    transform: rotate(0deg);
-                }
-
-                100 % {
-                    transform: rotate(360deg);
-                }
-            }
-
-        .status - message {
-                text - align: center;
-                margin - top: 10px;
-                font - weight: 500;
-            }
-    </style >
-</head >
-
-                <body>
-                    <div class="container">
-                        <header>
-                            <h1>Connect to WiFi</h1>
-                            <p>Select a network to connect your RoomSense device.</p>
-                        </header>
-
-                        <div class="card">
-                            <div id="loading" style="padding: 20px; text-align: center;">
-                                Scanning for networks...
-                            </div>
-                            <ul class="network-list" id="networkList"></ul>
-                        </div>
-
-                        <button class="btn" onclick="scanNetworks()">Rescan</button>
-                    </div>
-
-                    <div class="modal-overlay" id="passwordModal">
-                        <div class="modal">
-                            <h3 id="modalTitle">Enter Password</h3>
-                            <p id="selectedSSID" style="margin-bottom: 10px; font-weight: bold;"></p>
-                            <input type="password" id="passwordInput" placeholder="Password">
-                                <div class="modal-actions">
-                                    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                                    <button class="btn" onclick="connect()">Connect</button>
-                                </div>
-                        </div>
-                    </div>
-
-                    <div class="modal-overlay" id="statusModal">
-                        <div class="modal" style="text-align: center;">
-                            <h3>Connecting...</h3>
-                            <div class="spinner" id="statusSpinner" style="display: block;"></div>
-                            <p id="statusText">Please wait while we connect to the network.</p>
-                        </div>
-                    </div>
-
-                    <script>
-                        let selectedNetwork = null;
-
-                        async function scanNetworks() {
-            const list = document.getElementById('networkList');
-                        const loading = document.getElementById('loading');
-
-                        list.innerHTML = '';
-                        loading.style.display = 'block';
-
-                        try {
-                const response = await fetch('/api/scan');
-                        const networks = await response.json();
-
-                        loading.style.display = 'none';
-
-                networks.forEach(net => {
-                    const li = document.createElement('li');
-                        li.className = 'network-item';
-                        li.innerHTML = `
-                        <span class="ssid">${net.ssid}</span>
-                        <span class="signal-icon">${net.bars}</span>
-                        `;
-                    li.onclick = () => openModal(net.ssid);
-                        list.appendChild(li);
+                const response = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid, password })
                 });
+
+                const result = await response.json();
+
+                // Poll for status
+                // Since the network might drop, polling might fail immediately.
+                // We should handle that gracefully.
+                checkStatus();
             } catch (e) {
-                            loading.innerText = "Failed to scan. Please try again.";
+                console.error("Connect req failed", e);
+                // Likely network switched, which acts as "success" for the command sent
             }
         }
 
-                        function openModal(ssid) {
-                            selectedNetwork = ssid;
-                        document.getElementById('selectedSSID').innerText = ssid;
-                        document.getElementById('passwordInput').value = '';
-                        document.getElementById('passwordModal').style.display = 'flex';
-                        document.getElementById('passwordInput').focus();
-        }
+        async function checkStatus() {
+            let retries = 0;
+            const maxRetries = 20; // 20 * 2s = 40s
 
-                        function closeModal() {
-                            document.getElementById('passwordModal').style.display = 'none';
-                        selectedNetwork = null;
-        }
-
-                        async function connect() {
-            const password = document.getElementById('passwordInput').value;
-                        closeModal();
-
-                        document.getElementById('statusModal').style.display = 'flex';
-                        document.getElementById('statusText').innerText = `Connecting to ${selectedNetwork}...`;
-
-                        try {
-                            await fetch('/api/connect', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ ssid: selectedNetwork, password: password })
-                            });
-
-                        pollStatus();
-
-            } catch (e) {
-                            document.getElementById('statusText').innerText = "Error sending request.";
-            }
-        }
-
-                        async function pollStatus() {
-                            let errorCount = 0;
             const interval = setInterval(async () => {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+                try {
+                    const res = await fetch('/api/status');
+                    const data = await res.json();
 
-                        try {
-                    const response = await fetch('/api/status', {signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        const data = await response.json();
-
-                        document.getElementById('statusText').innerText = data.message;
-
-                        if (data.status === 'success') {
-                            clearInterval(interval);
-                        document.getElementById('statusSpinner').style.display = 'none';
-                        document.getElementById('statusText').innerText = "Success! Rebooting...";
+                    if (data.status === 'success') {
+                        clearInterval(interval);
+                        connectingModal.innerHTML = `
+                            <div class="modal-content" style="text-align: center;">
+                                <h3 style="color: green;">Connected!</h3>
+                                <p>Device is provisioning and will reboot.</p>
+                                <p>You can reconnect your phone to your home WiFi.</p>
+                            </div>
+                        `;
                     } else if (data.status === 'failed') {
-                            clearInterval(interval);
-                        document.getElementById('statusSpinner').style.display = 'none';
-                        setTimeout(() => {
-                            document.getElementById('statusModal').style.display = 'none';
-                        }, 3000);
+                        clearInterval(interval);
+                        connectingModal.style.display = 'none';
+                        alert(`Connection Failed: ${data.message || 'Unknown error'}`);
                     }
-                        errorCount = 0;
                 } catch (e) {
-                            clearTimeout(timeoutId);
-                        console.error(e);
-                        errorCount++;
-
-                    // If we fail 3 times in a row (approx 3-4 seconds), assume AP is gone.
-                    if (errorCount >= 3) {
-                            clearInterval(interval);
-                        document.getElementById('statusSpinner').style.display = 'none';
-                        document.getElementById('statusText').innerHTML =
-                        "<strong>Connection Lost</strong><br><br>" +
-                            "The Hotspot has stopped responding. This usually means the Pi has successfully connected to the new network and is rebooting.<br><br>" +
-                                "Please connect your device to the new network.";
+                    // Start counting connectivity errors. 
+                    // If we can't reach the API, the AP might be down -> Good sign (switching modes)
+                    // OR it crashed. 
+                    retries++;
+                    console.log("Status check failed (" + retries + ")");
+                    if (retries > 30) {
+                        clearInterval(interval);
+                        // Assume success or user lost connection
+                        connectingModal.innerHTML = `
+                            <div class="modal-content" style="text-align: center;">
+                                <h3>Connection Changed</h3>
+                                <p>The Setup Hotspot has stopped.</p>
+                                <p>If the device successfully connected, it is now rebooting.</p>
+                                <p>If not, the hotspot will reappear in a few minutes.</p>
+                            </div>
+                        `;
                     }
                 }
-            }, 1000);
+            }, 2000);
         }
 
-                                // Initial scan
-                                scanNetworks();
+        // Start scan on load
+        scanNetworks();
     </script>
 </body>
 

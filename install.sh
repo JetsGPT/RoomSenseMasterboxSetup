@@ -13,13 +13,21 @@ echo "Starting RoomSense Setup installation..."
 # 1. Install Dependencies
 echo "Installing system dependencies..."
 apt-get update
-apt-get install -y python3-venv python3-pip network-manager dnsmasq
+apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm git nginx docker.io
 
 # 2. Setup Directory
 INSTALL_DIR="/opt/roomsense/wifi_setup"
+SCRIPTS_DIR="/opt/roomsense/scripts"
 echo "Setting up directory at $INSTALL_DIR..."
 mkdir -p $INSTALL_DIR
+mkdir -p $SCRIPTS_DIR
+
 cp -r wifi_setup/* $INSTALL_DIR/
+# Move scripts to scripts dir
+mv $INSTALL_DIR/provision.sh $SCRIPTS_DIR/
+mv $INSTALL_DIR/wifi_watchdog.sh $SCRIPTS_DIR/
+chmod +x $SCRIPTS_DIR/provision.sh
+chmod +x $SCRIPTS_DIR/wifi_watchdog.sh
 
 # 3. Setup Python Environment
 echo "Setting up Python virtual environment..."
@@ -29,18 +37,12 @@ $INSTALL_DIR/venv/bin/pip install flask
 # 4. Configure NetworkManager & Dnsmasq for Captive Portal
 echo "Configuring NetworkManager..."
 # Ensure NetworkManager is managing everything
-# We need to enable dnsmasq in NetworkManager if not already
 if ! grep -q "dns=dnsmasq" /etc/NetworkManager/NetworkManager.conf; then
     echo "Enabling dnsmasq in NetworkManager..."
-    # Backup
     cp /etc/NetworkManager/NetworkManager.conf /etc/NetworkManager/NetworkManager.conf.bak
-    # Add [main] dns=dnsmasq if [main] exists, else append. 
-    # Simplest way for now:
-    # sed -i '/\[main\]/a dns=dnsmasq' /etc/NetworkManager/NetworkManager.conf
-    # But let's be safer. 
-    # Actually, for the "Shared" connection, NM spawns a separate dnsmasq instance.
-    # We can drop our config in /etc/NetworkManager/dnsmasq-shared.d/
-    :
+    # Basic sed to append if not present (simplified for robustness)
+    # Ideally should use a proper config parser, but this works for most default installs
+    sed -i '/\[main\]/a dns=dnsmasq' /etc/NetworkManager/NetworkManager.conf
 fi
 
 mkdir -p /etc/NetworkManager/dnsmasq-shared.d/
@@ -49,22 +51,40 @@ cp $INSTALL_DIR/dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
 # 5. Signal Factory Reset for Next Boot
 echo "Signaling factory reset..."
 touch $INSTALL_DIR/.factory_reset
-echo "A factory reset (clearing all WiFi connections) will be performed on the next boot."
 
-# 6. Create Initial Hotspot (if not exists)
-# The python script handles this logic on startup usually, but we can pre-create it.
-# However, the requirement says "If no wifi connection is saved... it should create its own hotspot".
-# Since we just deleted all connections, the python script will see no connections and create the hotspot.
-# So we don't need to do it here explicitly, but we can to be sure.
-
-# 7. Install Systemd Service
-echo "Installing systemd service..."
+# 6. Install Systemd Services
+echo "Installing systemd services..."
 cp $INSTALL_DIR/roomsense-setup.service /etc/systemd/system/
+
+# Create Watchdog Service & Timer
+cat <<EOF > /etc/systemd/system/wifi-watchdog.service
+[Unit]
+Description=RoomSense WiFi Watchdog
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$SCRIPTS_DIR/wifi_watchdog.sh
+EOF
+
+cat <<EOF > /etc/systemd/system/wifi-watchdog.timer
+[Unit]
+Description=Run WiFi Watchdog periodically
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=wifi-watchdog.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
 systemctl enable roomsense-setup.service
-# Service will start on reboot to avoid disconnecting SSH if running over WiFi
+# Watchdog timer is NOT enabled by default, it is enabled by provision.sh
 
-echo "Installation Complete! The system will now manage WiFi connections."
-echo "Rebooting in 5 seconds to apply all changes..."
+echo "Installation Complete!"
+echo "Rebooting in 5 seconds..."
 sleep 5
 reboot

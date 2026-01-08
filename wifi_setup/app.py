@@ -1,9 +1,15 @@
-from flask import Flask, render_template, request, jsonify, redirect
-from network_manager import NetworkManager
 import threading
 import time
 import os
 import subprocess
+import logging
+
+from flask import Flask, render_template, request, jsonify, redirect
+from network_manager import NetworkManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('app')
 
 app = Flask(__name__)
 nm = NetworkManager()
@@ -14,11 +20,6 @@ current_message = ""
 
 @app.route('/')
 def index():
-    # Captive portal detection
-    # If the host is not our IP, redirect to it? 
-    # Actually, DNS redirection handles the "getting here" part.
-    # But some OSes check for a specific URL (e.g. generate_204).
-    # We should catch-all and serve index.
     return render_template('index.html')
 
 @app.route('/generate_204')
@@ -33,6 +34,7 @@ def scan():
         networks = nm.scan_wifi()
         return jsonify(networks)
     except Exception as e:
+        logger.error(f"Scan failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/connect', methods=['POST'])
@@ -49,20 +51,32 @@ def connect():
     current_message = f"Connecting to {ssid}..."
     
     def connect_thread():
-        global connection_status, current_message
+        global connection_status, current_message, nm
+        # This will STOP the AP, so we might lose connectivity to the client here.
+        # But `nm.connect_wifi` handles the stop/start.
         success = nm.connect_wifi(ssid, password)
+        
         if success:
             connection_status = "success"
-            current_message = "Connected successfully! Rebooting..."
-            # Wait a bit then reboot or stop AP
-            time.sleep(3)
-            # We could just stop the AP and let the new connection take over, 
-            # but a reboot is cleaner to ensure system services start with network.
-            subprocess.run(['sudo', 'reboot'])
+            current_message = "Connected successfully! Provisioning..."
+            logger.info("Connection success. Triggering provisioning...")
+            
+            # Execute provision script in background so we don't block
+            # and to allow clean exit if this service gets stopped.
+            try:
+                subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
+                                 stdout=subprocess.DEVNULL, 
+                                 stderr=subprocess.DEVNULL,
+                                 preexec_fn=os.setpgrp)
+            except Exception as e:
+                logger.error(f"Failed to start provisioning: {e}")
+                
         else:
             connection_status = "failed"
             current_message = "Failed to connect. Check password."
+            logger.error("Connection failed.")
 
+    # Start thread
     threading.Thread(target=connect_thread).start()
     
     return jsonify({'status': 'started'})
@@ -75,25 +89,37 @@ def check_and_start_ap():
     """Checks connection status on startup and creates AP if needed."""
     # Check for factory reset marker
     if os.path.exists('.factory_reset'):
-        print("Factory reset marker found. Clearing all WiFi connections...")
+        logger.info("Factory reset marker found. Clearing all WiFi connections...")
         nm.delete_all_connections()
         try:
             os.remove('.factory_reset')
         except OSError:
             pass
-        # After clearing, we definitely need to start AP
-        print("Starting Hotspot after factory reset...")
-        nm.create_ap("RoomSenseSetup", None)
+        
+        logger.info("Starting Hotspot after factory reset...")
+        nm.create_ap()
         return
 
-    connected, name = nm.is_connected()
-    if connected:
-        print(f"Connected to {name}. No need to start AP.")
+    # Check internet connectivity or active wifi connection
+    if nm.is_connected_to_internet():
+         logger.info("Internet connected. No need to start AP.")
+         # If we are here, it means the setup service is running but we have internet.
+         # This might happen if provisioning failed or wasn't run.
+         # We could auto-trigger provisioning? 
+         # Or just leave it alone.
+         pass
     else:
-        print("No active connection found. Starting Hotspot...")
-        nm.create_ap("RoomSenseSetup", None) # Open network for easy setup, or add password if desired
+        # Check if we are connected to a router at least (but maybe no internet)
+        connected, name = nm.is_connected()
+        if connected:
+             logger.info(f"Connected to {name}, but maybe no internet? Checking...")
+             if nm.is_connected_to_internet():
+                 logger.info("Internet verified.")
+                 return
+
+        logger.info("No valid internet connection found. Starting Hotspot...")
+        nm.create_ap()
 
 if __name__ == '__main__':
-    # Ensure we are accessible
     check_and_start_ap()
     app.run(host='0.0.0.0', port=80, threaded=True)

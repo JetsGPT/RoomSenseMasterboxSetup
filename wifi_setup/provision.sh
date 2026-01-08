@@ -111,19 +111,35 @@ server {
 }
 EOF
 
-# Reload Nginx
-if systemctl is-active --quiet nginx; then
-    systemctl reload nginx
-else
-    systemctl enable nginx
-    systemctl start nginx
-fi
+# 4. Frontend Build & Deploy to Backend (Express)
+echo "Building Frontend..."
+cd "$INSTALL_DIR/frontend/roomsenseapp"
+npm install
+npm run build
+
+echo "Deploying Frontend to Backend (Express)..."
+# Destination: The 'public' folder of the Express app inside the cloned backend repo.
+# Note: This assumes the Docker container mounts this directory or has verified permissions.
+DEPLOY_TARGET="$INSTALL_DIR/backend/webserver/src/public"
+mkdir -p "$DEPLOY_TARGET"
+
+# Copy build artifacts (Vite uses 'dist')
+# We use rsync or cp. cp -r is simpler.
+cp -r "$INSTALL_DIR/frontend/roomsenseapp/dist/"* "$DEPLOY_TARGET/"
+
+echo "Frontend deployed. Express should now serve the app."
 
 # 5. Transition to Production
 echo "Transitioning to Production Mode..."
 
-# Disable Setup Service
+# STOP Setup Service to free Port 80
+systemctl stop roomsense-setup.service
 systemctl disable roomsense-setup.service
+
+# STOP Nginx (if running) because Docker/Express will likely want Port 80 (or handled by Traefik/Swarm)
+# Since we are deploying to Express, we assume the Backend handles the web serving now.
+systemctl stop nginx
+systemctl disable nginx
 
 # Enable Watchdog
 systemctl enable wifi-watchdog.timer

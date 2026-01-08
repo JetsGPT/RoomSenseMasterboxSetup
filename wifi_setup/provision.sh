@@ -49,7 +49,7 @@ fi
 
 # 3. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
-cd "$INSTALL_DIR/backend"
+cd "$INSTALL_DIR/backend/webserver"
 # Ensure executable
 chmod +x scripts/init/start.sh
 # Run the start script

@@ -85,8 +85,23 @@ def connect():
 def status():
     return jsonify({'status': connection_status, 'message': current_message})
 
+
+
 def check_and_start_ap():
     """Checks connection status on startup and creates AP if needed."""
+    
+    # Grace Period: Wait for router to wake up (max 30s)
+    logger.info("Waiting for internet/connection (Grace Period)...")
+    for i in range(10): # 10 * 3s = 30s
+        if nm.is_connected_to_internet():
+            break
+        # Also check if we are just connected to wifi but no internet yet (DHCP slow)
+        connected, _ = nm.is_connected()
+        if connected: 
+             # Give it a bit more time for valid IP
+             pass
+        time.sleep(3)
+        
     # Check for factory reset marker
     if os.path.exists('.factory_reset'):
         logger.info("Factory reset marker found. Clearing all WiFi connections...")

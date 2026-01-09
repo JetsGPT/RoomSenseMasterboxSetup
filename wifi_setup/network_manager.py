@@ -151,7 +151,7 @@ class NetworkManager:
             'type', 'wifi',
             'ifname', 'wlan0',
             'con-name', ssid,
-            'autoconnect', 'yes',
+            'autoconnect', 'no',
             'ssid', ssid,
             'mode', 'ap',
             'ipv4.method', 'shared',

@@ -141,8 +141,8 @@ def check_and_start_ap():
                  logger.error(f"Failed to resume provisioning: {e}")
 
          logger.info("Internet connected. No need to start AP. Switching to Production...")
-         # Verification: Start Nginx (which serves the frontend)
-         subprocess.run(['systemctl', 'start', 'nginx'], check=False)
+         # Verification: Do NOT start Nginx (Docker handles frontend now)
+         # subprocess.run(['systemctl', 'start', 'nginx'], check=False)
          # Stop self
          subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
          return

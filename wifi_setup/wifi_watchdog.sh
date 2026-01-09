@@ -33,7 +33,9 @@ fi
 echo "Connection permanently lost. Reverting to Setup Mode..."
 
 # Stop Production App (Nginx holds Port 80, which we need)
+# Also stop Docker (containers might hold Port 80)
 systemctl stop nginx
+systemctl stop docker
 
 # Start AP Mode
 systemctl start roomsense-setup.service

@@ -67,6 +67,9 @@ echo "Frontend deployed. Express should now serve the app."
 
 # 4. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
+# Ensure Docker is running (it might have been stopped by app.py during reset)
+systemctl start docker
+
 cd "$INSTALL_DIR/backend/webserver"
 
 # Initialize Docker Swarm

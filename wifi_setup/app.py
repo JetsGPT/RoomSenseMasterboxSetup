@@ -105,6 +105,13 @@ def check_and_start_ap():
     # Check for factory reset marker
     if os.path.exists('.factory_reset'):
         logger.info("Factory reset marker found. Clearing all WiFi connections...")
+        
+        # STOP DOCKER to free Port 80 (prevent conflict with old containers)
+        try:
+             subprocess.run(['systemctl', 'stop', 'docker'], check=False)
+        except Exception:
+             pass
+
         try:
             nm.delete_all_connections()
         except:

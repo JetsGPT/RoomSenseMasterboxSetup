@@ -99,6 +99,11 @@ def check_and_start_ap():
             os.remove('.factory_reset')
         except OSError:
             pass
+
+        try:
+            os.remove('.provisioned') # Clean up provision marker on factory reset
+        except OSError:
+            pass
         
         logger.info("Starting Hotspot after factory reset...")
         nm.create_ap()
@@ -106,6 +111,20 @@ def check_and_start_ap():
 
     # Check internet connectivity or active wifi connection
     if nm.is_connected_to_internet():
+         # Check if we are fully provisioned
+         if not os.path.exists('.provisioned'):
+             logger.info("Internet connected but NOT provisioned. Resuming provisioning...")
+             try:
+                 subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
+                                  stdout=subprocess.DEVNULL, 
+                                  stderr=subprocess.DEVNULL,
+                                  start_new_session=True)
+                 # Stop self to prevent conflicts
+                 subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
+                 return
+             except Exception as e:
+                 logger.error(f"Failed to resume provisioning: {e}")
+
          logger.info("Internet connected. No need to start AP. Switching to Production...")
          # Verification: Start Nginx (which serves the frontend)
          subprocess.run(['systemctl', 'start', 'nginx'], check=False)
@@ -125,5 +144,11 @@ def check_and_start_ap():
         nm.create_ap()
 
 if __name__ == '__main__':
+    # Ensure Nginx is not running and hogging port 80
+    try:
+        subprocess.run(['systemctl', 'stop', 'nginx'], check=False)
+    except Exception:
+        pass
+
     check_and_start_ap()
     app.run(host='0.0.0.0', port=80, threaded=True)

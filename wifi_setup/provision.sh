@@ -117,6 +117,9 @@ systemctl disable roomsense-setup.service
 systemctl stop nginx
 systemctl disable nginx
 
+# Mark provisioning as successful
+touch /opt/roomsense/wifi_setup/.provisioned
+
 # Enable Watchdog
 systemctl enable wifi-watchdog.timer
 systemctl start wifi-watchdog.timer

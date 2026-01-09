@@ -138,6 +138,7 @@ class NetworkManager:
             self.create_ap()
             return False
 
+    def create_ap(self, ssid="RoomSenseSetup", password=None):
         """Creates and starts the Hotspot."""
         logger.info("Creating AP...")
         

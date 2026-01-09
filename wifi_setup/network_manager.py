@@ -138,9 +138,12 @@ class NetworkManager:
             self.create_ap()
             return False
 
-    def create_ap(self, ssid="RoomSenseSetup", password=None):
         """Creates and starts the Hotspot."""
         logger.info("Creating AP...")
+        
+        # Explicitly disconnect current connections on the device to prevent interference
+        self.run_command(['nmcli', 'device', 'disconnect', 'wlan0'])
+        time.sleep(1) # Wait for disconnect
         
         # Ensure cleanup
         self.run_command(['nmcli', 'connection', 'down', ssid])

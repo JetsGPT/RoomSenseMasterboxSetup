@@ -20,6 +20,19 @@ apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm g
 systemctl disable nginx
 systemctl stop nginx
 
+# Disable systemd-resolved to prevent conflict with dnsmasq on port 53
+# This is a common issue on modern Debian/Ubuntu systems
+echo "Disabling systemd-resolved (conflicts with dnsmasq)..."
+systemctl stop systemd-resolved
+systemctl disable systemd-resolved
+
+# Point resolv.conf to a static file instead of systemd-resolved stub
+if [ -L /etc/resolv.conf ]; then
+    rm /etc/resolv.conf
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+fi
+
 # 2. Setup Directory
 INSTALL_DIR="/opt/roomsense/wifi_setup"
 GLOBAL_SCRIPTS_DIR="/opt/roomsense/scripts" # Renamed to avoid conflict with local var

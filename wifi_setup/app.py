@@ -135,6 +135,7 @@ def status():
 
 def check_and_start_ap():
     """Checks connection status on startup and creates AP if needed."""
+    global ap_mode_active  # Must be at top of function
     
     # Grace Period: Wait for router to wake up (max 30s)
     logger.info("Waiting for internet/connection (Grace Period)...")
@@ -175,7 +176,6 @@ def check_and_start_ap():
         
         logger.info("Starting Hotspot after factory reset...")
         nm.create_ap()
-        global ap_mode_active
         ap_mode_active = True
         return
 
@@ -229,7 +229,6 @@ def check_and_start_ap():
 
         logger.info("No valid internet connection found. Starting Hotspot...")
         nm.create_ap()
-        global ap_mode_active
         ap_mode_active = True
 
 if __name__ == '__main__':

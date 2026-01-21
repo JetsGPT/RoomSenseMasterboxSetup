@@ -233,9 +233,10 @@ def check_and_start_ap():
         ap_mode_active = True
 
 if __name__ == '__main__':
-    # Ensure Nginx is not running and hogging port 80
+    # Ensure Nginx and Docker are not running and hogging port 80
     try:
         subprocess.run(['systemctl', 'stop', 'nginx'], check=False)
+        subprocess.run(['systemctl', 'stop', 'docker'], check=False)
     except Exception:
         pass
 

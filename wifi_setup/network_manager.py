@@ -8,7 +8,28 @@ logger = logging.getLogger(__name__)
 
 class NetworkManager:
     def __init__(self):
-        pass
+        self._wifi_interface = None
+
+    def get_wifi_interface(self):
+        """Auto-detect the wireless interface name."""
+        if self._wifi_interface:
+            return self._wifi_interface
+        try:
+            result = subprocess.run(
+                ['nmcli', '-t', '-f', 'DEVICE,TYPE', 'device'],
+                capture_output=True, text=True, check=True, timeout=10
+            )
+            for line in result.stdout.strip().split('\n'):
+                if ':wifi' in line:
+                    self._wifi_interface = line.split(':')[0]
+                    logger.info(f"Detected WiFi interface: {self._wifi_interface}")
+                    return self._wifi_interface
+        except Exception as e:
+            logger.warning(f"Failed to detect WiFi interface: {e}")
+        # Fallback
+        self._wifi_interface = 'wlan0'
+        logger.info("Using fallback interface: wlan0")
+        return self._wifi_interface
 
     def run_command(self, command, sensitive=False):
         try:
@@ -26,13 +47,17 @@ class NetworkManager:
             logger.error(f"Command timed out: {command[0]}...")
             return None
         except subprocess.CalledProcessError as e:
+            # Never log full command if sensitive - could contain passwords
             if sensitive:
-                logger.error(f"Command failed: {e.cmd[0]}... Stderr: {e.stderr}")
+                logger.error(f"Command failed: {command[0]}... Stderr: {e.stderr}")
             else:
                 logger.error(f"Command failed: {e.cmd}. Output: {e.output}. Stderr: {e.stderr}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error running command: {e}")
+            if sensitive:
+                logger.error(f"Unexpected error running command: {command[0]}...")
+            else:
+                logger.error(f"Unexpected error running command: {e}")
             return None
 
     def scan_wifi(self):
@@ -90,12 +115,20 @@ class NetworkManager:
         """
         logger.info(f"Attempting to connect to {ssid}...")
         
-        # 1. Config connection
-        connection_name = f"wifi-{ssid}"
-        
-        # Delete any existing connection with this name/ssid to start fresh
-        self.run_command(['nmcli', 'connection', 'delete', ssid]) 
-        self.run_command(['nmcli', 'connection', 'delete', connection_name])
+        # 1. Delete ALL existing connections for this SSID (by UUID, not name)
+        # This avoids the "dangling connection" bug where name != SSID
+        output = self.run_command(['nmcli', '-t', '-f', 'UUID,NAME,TYPE', 'connection', 'show'])
+        if output:
+            for line in output.split('\n'):
+                if not line: continue
+                parts = line.split(':')
+                if len(parts) >= 3 and ('wifi' in parts[2] or 'wireless' in parts[2]):
+                    uuid = parts[0]
+                    name = parts[1]
+                    # Delete if connection name matches SSID or our naming pattern
+                    if name == ssid or name == f"wifi-{ssid}":
+                        logger.info(f"Deleting existing connection: {name} ({uuid})")
+                        self.run_command(['nmcli', 'connection', 'delete', uuid])
         
         # 2. Stop the AP (RoomSenseSetup)
         # This will kill the web request connection eventually, so the caller (app.py) 
@@ -142,8 +175,10 @@ class NetworkManager:
         """Creates and starts the Hotspot."""
         logger.info("Creating AP...")
         
+        iface = self.get_wifi_interface()
+        
         # Explicitly disconnect current connections on the device to prevent interference
-        self.run_command(['nmcli', 'device', 'disconnect', 'wlan0'])
+        self.run_command(['nmcli', 'device', 'disconnect', iface])
         time.sleep(1) # Wait for disconnect
         
         # Ensure cleanup
@@ -153,7 +188,7 @@ class NetworkManager:
         cmd = [
             'nmcli', 'connection', 'add',
             'type', 'wifi',
-            'ifname', 'wlan0',
+            'ifname', iface,
             'con-name', ssid,
             'autoconnect', 'no',
             'ssid', ssid,

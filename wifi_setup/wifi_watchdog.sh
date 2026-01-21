@@ -9,7 +9,8 @@
 
 TARGET_HOST="8.8.8.8"
 FAIL_COUNT=0
-MAX_RETRIES=3
+MAX_RETRIES=5
+RETRY_WAIT=30
 
 # Define absolute paths for safety in systemd environment
 PING_CMD="/bin/ping"
@@ -53,13 +54,14 @@ if check_connection; then
     log "Connection OK."
     exit 0
 else
-    log "Connection lost. Retrying..."
+    log "Connection lost. Retrying with backoff..."
     for i in $(seq 1 $MAX_RETRIES); do
-        $SLEEP_CMD 20
+        $SLEEP_CMD $RETRY_WAIT
         if check_connection; then
              log "Connection restored on retry $i."
              exit 0
         fi
+        log "Retry $i failed."
     done
 fi
 
@@ -70,11 +72,23 @@ log "Toggling networking to trigger reconnection..."
 /usr/bin/nmcli networking off
 $SLEEP_CMD 2
 /usr/bin/nmcli networking on
-$SLEEP_CMD 15
+
+# Wait longer for DHCP on slow networks
+log "Waiting 45s for network reconnection..."
+$SLEEP_CMD 45
 
 # Check if reconnection worked
 if $PING_CMD -c 1 -W 2 $TARGET_HOST > /dev/null 2>&1; then
     log "Reconnection successful after networking toggle. Exiting..."
+    exit 0
+fi
+
+# Give it one more try with a shorter wait
+log "First reconnection attempt failed. Waiting another 30s..."
+$SLEEP_CMD 30
+
+if $PING_CMD -c 1 -W 2 $TARGET_HOST > /dev/null 2>&1; then
+    log "Reconnection successful on second attempt. Exiting..."
     exit 0
 fi
 

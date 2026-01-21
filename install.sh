@@ -85,8 +85,8 @@ cat <<EOF > /etc/systemd/system/wifi-watchdog.timer
 Description=Run WiFi Watchdog periodically
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=5min
+OnBootSec=2min
+OnUnitActiveSec=2min
 Unit=wifi-watchdog.service
 
 [Install]
@@ -95,7 +95,8 @@ EOF
 
 systemctl daemon-reload
 systemctl enable roomsense-setup.service
-# Watchdog timer is NOT enabled by default, it is enabled by provision.sh
+# Enable watchdog timer immediately so monitoring starts after first boot
+systemctl enable wifi-watchdog.timer
 
 echo "Installation Complete!"
 echo "Rebooting in 5 seconds..."

@@ -18,6 +18,13 @@ SLEEP_CMD="/bin/sleep"
 DATE_CMD="/bin/date"
 
 LOG_FILE="/var/log/roomsense_watchdog.log"
+
+# Log rotation: keep log under 100KB
+MAX_LOG_SIZE=102400
+if [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) -gt $MAX_LOG_SIZE ]; then
+    tail -c 50000 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
+
 log() {
     $DATE_CMD >> $LOG_FILE
     echo "$1" >> $LOG_FILE
@@ -27,6 +34,14 @@ log() {
 exec >> $LOG_FILE 2>&1
 
 log "Watchdog started."
+
+# EDGE CASE: If setup service (AP mode) is already active, skip monitoring
+# Otherwise watchdog will continuously fail pings and restart services
+IS_SETUP_ACTIVE=$($SYSTEMCTL_CMD is-active roomsense-setup.service 2>/dev/null)
+if [ "$IS_SETUP_ACTIVE" = "active" ]; then
+    log "Setup service is active (AP mode). Skipping connectivity check."
+    exit 0
+fi
 
 check_connection() {
     # Try ping. 
@@ -48,7 +63,22 @@ else
     done
 fi
 
-log "Connection permanently lost. Reverting to Setup Mode..."
+log "Connection permanently lost. Attempting reconnection before AP mode..."
+
+# First, attempt to reconnect to any saved WiFi networks
+log "Toggling networking to trigger reconnection..."
+/usr/bin/nmcli networking off
+$SLEEP_CMD 2
+/usr/bin/nmcli networking on
+$SLEEP_CMD 15
+
+# Check if reconnection worked
+if $PING_CMD -c 1 -W 2 $TARGET_HOST > /dev/null 2>&1; then
+    log "Reconnection successful after networking toggle. Exiting..."
+    exit 0
+fi
+
+log "Reconnection failed. Reverting to Setup Mode..."
 
 # Stop Production App (Nginx holds Port 80, which we need)
 # Also stop Docker (containers might hold Port 80, 443, etc)

@@ -17,6 +17,52 @@ nm = NetworkManager()
 # Global state
 connection_status = "idle" # idle, connecting, success, failed
 current_message = ""
+ap_mode_active = False  # Track if we're running in AP mode
+
+
+def background_wifi_monitor():
+    """
+    Background thread that monitors for saved WiFi networks becoming available.
+    Only runs when we're in AP mode. Checks every 2 minutes if a saved network
+    is visible, and if so, logs this for the user (they should reconnect via portal).
+    
+    Note: We can't automatically switch because toggling networking would kill
+    the AP that users are connected to. Instead, we just monitor.
+    """
+    global ap_mode_active
+    
+    while True:
+        time.sleep(120)  # Check every 2 minutes
+        
+        if not ap_mode_active:
+            continue
+            
+        logger.info("[WiFi Monitor] Scanning for available networks while in AP mode...")
+        
+        try:
+            # Get list of saved connections
+            result = subprocess.run(
+                ['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'],
+                capture_output=True, text=True
+            )
+            saved_ssids = set()
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if ':wifi' in line or ':802-11-wireless' in line:
+                        saved_ssids.add(line.split(':')[0])
+            
+            # Scan for visible networks (this works even in AP mode)
+            visible = nm.scan_wifi()
+            visible_ssids = {n['ssid'] for n in visible}
+            
+            # Check if any saved network is now visible
+            available = saved_ssids & visible_ssids
+            if available:
+                logger.info(f"[WiFi Monitor] Saved networks available: {available}")
+                logger.info("[WiFi Monitor] User can reconnect via the setup portal.")
+                    
+        except Exception as e:
+            logger.error(f"[WiFi Monitor] Error during scan: {e}")
 
 @app.route('/')
 def index():
@@ -129,25 +175,30 @@ def check_and_start_ap():
         
         logger.info("Starting Hotspot after factory reset...")
         nm.create_ap()
+        global ap_mode_active
+        ap_mode_active = True
         return
 
     # Check internet connectivity or active wifi connection
     if nm.is_connected_to_internet():
-         # Check if we are fully provisioned
-         if not os.path.exists('.provisioned'):
-             logger.info("Internet connected but NOT provisioned. Resuming provisioning...")
-             try:
-                 subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
-                                  stdout=subprocess.DEVNULL, 
-                                  stderr=subprocess.DEVNULL,
-                                  start_new_session=True)
-                 # Stop self to prevent conflicts
-                 subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
-                 return
-             except Exception as e:
-                 logger.error(f"Failed to resume provisioning: {e}")
+         logger.info("Internet connected. Triggering auto-update/provisioning...")
+         try:
+             # Always run provision.sh (it is now idempotent/smart)
+             subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
+                              stdout=subprocess.DEVNULL, 
+                              stderr=subprocess.DEVNULL,
+                              start_new_session=True)
+             
+             # Stop self to let provision/production take over
+             # BUT: since provision.sh might just restart services and exit (if no update),
+             # we should strictly let provision.sh handle the stopping of this service if needed.
+             # However, provision.sh DOES stop this service. So this is fine.
+             subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
+             return
+         except Exception as e:
+             logger.error(f"Failed to start auto-update: {e}")
 
-         logger.info("Internet connected. No need to start AP. Switching to Production...")
+         logger.info("Internet connected. Switching to Production...")
          # Verification: Do NOT start Nginx (Docker handles frontend now)
          # subprocess.run(['systemctl', 'start', 'nginx'], check=False)
          # Stop self
@@ -162,8 +213,24 @@ def check_and_start_ap():
                  logger.info("Internet verified.")
                  return
 
+        # Attempt to trigger reconnection before starting AP
+        logger.info("Attempting to trigger network reconnection...")
+        try:
+            subprocess.run(['nmcli', 'networking', 'off'], check=False)
+            time.sleep(2)
+            subprocess.run(['nmcli', 'networking', 'on'], check=False)
+            time.sleep(15)  # Wait for possible reconnection
+            
+            if nm.is_connected_to_internet():
+                logger.info("Reconnection successful after toggle.")
+                return
+        except Exception as e:
+            logger.error(f"Reconnection attempt failed: {e}")
+
         logger.info("No valid internet connection found. Starting Hotspot...")
         nm.create_ap()
+        global ap_mode_active
+        ap_mode_active = True
 
 if __name__ == '__main__':
     # Ensure Nginx is not running and hogging port 80
@@ -171,6 +238,10 @@ if __name__ == '__main__':
         subprocess.run(['systemctl', 'stop', 'nginx'], check=False)
     except Exception:
         pass
+
+    # Start background WiFi monitor thread (checks for WiFi returning while in AP mode)
+    monitor_thread = threading.Thread(target=background_wifi_monitor, daemon=True)
+    monitor_thread.start()
 
     check_and_start_ap()
     app.run(host='0.0.0.0', port=80, threaded=True)

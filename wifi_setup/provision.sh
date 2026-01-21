@@ -69,8 +69,14 @@ fi
 DEPLOY_TARGET="$INSTALL_DIR/backend/webserver/src/public"
 mkdir -p "$DEPLOY_TARGET"
 
-if [ "$CHANGES_DETECTED" = true ] || [ ! -d "$DEPLOY_TARGET" ] || [ -z "$(ls -A $DEPLOY_TARGET)" ]; then
-    echo "Building Frontend..."
+# Only build if changes were detected OR if the deploy target is truly empty (first run)
+DEPLOY_EMPTY=false
+if [ ! -f "$DEPLOY_TARGET/index.html" ]; then
+    DEPLOY_EMPTY=true
+fi
+
+if [ "$CHANGES_DETECTED" = true ] || [ "$DEPLOY_EMPTY" = true ]; then
+    echo "Building Frontend (changes detected or first deploy)..."
     cd "$INSTALL_DIR/frontend/roomsenseapp"
     npm install
     npm run build

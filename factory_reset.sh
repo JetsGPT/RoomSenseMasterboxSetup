@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# factory_reset.sh
+# Removes all changes made by RoomSenseMasterboxSetup install.sh
+# Run this as root: sudo ./factory_reset.sh
+
+if [ "$EUID" -ne 0 ]; then 
+  echo "Please run as root"
+  exit 1
+fi
+
+echo "WARNING: This will remove RoomSense services, files, and network configurations."
+echo "starting cleanup..."
+
+# 1. Stop and Disable Services
+echo "Stopping services..."
+systemctl stop roomsense-setup.service wifi-watchdog.timer wifi-watchdog.service docker nginx
+systemctl disable roomsense-setup.service wifi-watchdog.timer wifi-watchdog.service
+
+# 2. Docker Swarm & Resource Cleanup
+echo "Cleaning up Docker..."
+# Leave Swarm (destroys all stack services and secrets)
+docker swarm leave --force 2>/dev/null || true
+
+# Stop all running containers (for non-swarm containers)
+if [ -n "$(docker ps -q)" ]; then
+    docker stop $(docker ps -q)
+fi
+
+# Deep Clean: Remove all containers, images, volumes, and networks
+# This ensures no old data/code persists
+echo "Pruning all Docker resources (volumes, images, networks, build cache)..."
+docker system prune -a --volumes -f
+
+# 3. Remove Service Files
+echo "Removing systemd units..."
+rm -f /etc/systemd/system/roomsense-setup.service
+rm -f /etc/systemd/system/wifi-watchdog.service
+rm -f /etc/systemd/system/wifi-watchdog.timer
+systemctl daemon-reload
+systemctl reset-failed
+
+# 4. Remove Project Files
+echo "Removing /opt/roomsense..."
+rm -rf /opt/roomsense
+
+# 4. Revert NetworkManager Configurations
+echo "Reverting NetworkManager configuration..."
+rm -f /etc/NetworkManager/conf.d/dns-servers.conf
+rm -f /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
+
+# Check if we added dns=dnsmasq and remove it
+if grep -q "dns=dnsmasq" /etc/NetworkManager/NetworkManager.conf; then
+    echo "Removing dns=dnsmasq from NetworkManager.conf..."
+    # Create backup
+    cp /etc/NetworkManager/NetworkManager.conf /etc/NetworkManager/NetworkManager.conf.backup_reset
+    # Remove the line
+    sed -i '/dns=dnsmasq/d' /etc/NetworkManager/NetworkManager.conf
+fi
+
+# 5. Clean up Network Connections
+echo "Deleting 'RoomSenseSetup' and other wifi connections..."
+# Delete the specific hotspot connection
+nmcli connection delete RoomSenseSetup 2>/dev/null || true
+
+# OPTIONAL: Delete all wifi connections to start fresh (Uncomment if desired)
+# echo "Deleting all WiFi connections..."
+# nmcli --fields UUID,TYPE connection show | grep wifi | awk '{print $1}' | xargs -r nmcli connection delete
+
+# 6. Restart Networking to apply changes
+echo "Restarting NetworkManager..."
+systemctl restart NetworkManager
+
+# 7. Optional Package Removal (Deep Clean)
+# echo "Removing installed packages (docker, nginx, dnsmasq)..."
+# apt-get remove -y docker.io nginx dnsmasq
+# apt-get autoremove -y
+
+echo "Done! The system is reset relative to the project installation."
+echo "You can now run 'sudo ./install.sh' again."

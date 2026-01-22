@@ -110,19 +110,7 @@ fi
 echo "Using WiFi interface: $WIFI_IFACE"
 
 if [ "$SWARM_STATUS" = "active" ] && [ "$IS_MANAGER" = "true" ]; then
-    # [FIX 1B] Check if current IP matches the advertise address
-    # DHCP may assign a different IP after reboot, breaking Swarm
-    CURRENT_IP=$(ip -4 addr show $WIFI_IFACE | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
-    SWARM_ADDR=$(docker info --format '{{.Swarm.NodeAddr}}')
-    
-    if [ -n "$CURRENT_IP" ] && [ -n "$SWARM_ADDR" ] && [ "$CURRENT_IP" != "$SWARM_ADDR" ]; then
-        echo "IP mismatch detected! Current: $CURRENT_IP, Swarm: $SWARM_ADDR"
-        echo "Re-initializing Swarm with new IP..."
-        docker swarm leave --force
-        docker swarm init --advertise-addr $CURRENT_IP
-    else
-        echo "Swarm is already initialized with correct IP ($SWARM_ADDR)."
-    fi
+    echo "Swarm is already initialized and active manager."
 elif [ "$SWARM_STATUS" = "active" ] && [ "$IS_MANAGER" != "true" ]; then
     echo "Node is in Swarm but NOT a manager. Leaving..."
     docker swarm leave --force

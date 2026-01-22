@@ -36,6 +36,14 @@ exec >> $LOG_FILE 2>&1
 
 log "Watchdog started."
 
+# [FIX 2] RESTORE AUTOCONNECT
+# Ensure we try to connect to saved networks before assuming we need the Hotspot.
+# This fixes the issue where the device remembers 'autoconnect=no' from the previous AP session.
+log "Ensuring saved networks are set to auto-connect..."
+/usr/bin/nmcli -t -f UUID,TYPE connection show | grep -E 'wifi|wireless' | cut -d: -f1 | while read uuid; do
+    /usr/bin/nmcli connection modify "$uuid" connection.autoconnect yes
+done
+
 # EDGE CASE: If setup service (AP mode) is already active, skip monitoring
 # Otherwise watchdog will continuously fail pings and restart services
 IS_SETUP_ACTIVE=$($SYSTEMCTL_CMD is-active roomsense-setup.service 2>/dev/null)

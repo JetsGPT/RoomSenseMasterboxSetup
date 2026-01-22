@@ -74,22 +74,6 @@ echo "Frontend deployed."
 
 # 4. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
-
-# CRITICAL: Stop the setup service NOW (releases port 80 for nginx)
-# This must happen BEFORE deploying the stack, otherwise nginx can't bind to port 80
-echo "Stopping setup service to release port 80..."
-systemctl stop roomsense-setup.service || true
-
-# Wait for port 80 to be released (Flask takes a moment to shutdown)
-for i in {1..10}; do
-    if ! ss -tlnp | grep -q ':80 '; then
-        echo "Port 80 is free"
-        break
-    fi
-    echo "Waiting for port 80 to be released... ($i/10)"
-    sleep 1
-done
-
 # Ensure Docker is running (it might have been stopped by app.py during reset)
 systemctl start docker
 
@@ -163,7 +147,8 @@ systemctl disable nginx
 # Check if first time provisioning
 if [ -f "/opt/roomsense/wifi_setup/.provisioned" ]; then
     echo "Update complete. Services restarted."
-    # Service was already stopped before stack deployment
+    # STOP Setup Service LAST (we're running inside it via Popen, so this is safe)
+    systemctl stop roomsense-setup.service
     systemctl disable roomsense-setup.service
 else
     # First time provision

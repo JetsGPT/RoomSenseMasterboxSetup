@@ -130,11 +130,9 @@ class NetworkManager:
                         logger.info(f"Deleting existing connection: {name} ({uuid})")
                         self.run_command(['nmcli', 'connection', 'delete', uuid])
         
-        # 2. Stop the AP (RoomSenseSetup)
-        # This will kill the web request connection eventually, so the caller (app.py) 
-        # must have already sent the response or spawned a thread that doesn't rely on the socket.
-        logger.info("Stopping AP...")
-        self.run_command(['nmcli', 'connection', 'down', 'RoomSenseSetup'])
+        # 2. Disconnect from AP and attempt new connection
+        # NOTE: On single-radio devices, nmcli will automatically bring down conflicting connections
+        # The explicit AP stop (for frontend notification) happens in app.py AFTER this returns
         
         # 3. Add & Up new connection
         cmd = ['nmcli', 'device', 'wifi', 'connect', ssid]

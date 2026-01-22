@@ -98,22 +98,30 @@ def connect():
     
     def connect_thread():
         global connection_status, current_message, nm
-        # This will STOP the AP, so we might lose connectivity to the client here.
-        # But `nm.connect_wifi` handles the stop/start.
+        # This will attempt WiFi connection. AP teardown is now DELAYED.
         success = nm.connect_wifi(ssid, password)
         
         if success:
             connection_status = "success"
             current_message = "Connected successfully! Provisioning..."
-            logger.info("Connection success. Triggering provisioning...")
+            logger.info("Connection success. Waiting 3s for frontend to poll...")
             
-            # Execute provision script in background so we don't block
-            # and to allow clean exit if this service gets stopped.
+            # [FIX 1A] Grace period for frontend to receive success status
+            # before we kill the AP and phone disconnects
+            time.sleep(3)
+            
+            # NOW stop the AP (phone will disconnect after this)
+            nm.run_command(['nmcli', 'connection', 'down', 'RoomSenseSetup'])
+            
+            # [FIX 2B] Use systemd-run for proper process tracking
+            # This ensures systemd manages the provisioning process
+            logger.info("Triggering provisioning via systemd-run...")
             try:
-                subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
-                                 stdout=subprocess.DEVNULL, 
-                                 stderr=subprocess.DEVNULL,
-                                 start_new_session=True)
+                subprocess.run([
+                    'systemd-run', '--no-block', '--unit=roomsense-provision',
+                    '--description=RoomSense Provisioning',
+                    '/opt/roomsense/scripts/provision.sh'
+                ], check=False)
             except Exception as e:
                 logger.error(f"Failed to start provisioning: {e}")
                 
@@ -183,11 +191,12 @@ def check_and_start_ap():
     if nm.is_connected_to_internet():
          logger.info("Internet connected. Triggering auto-update/provisioning...")
          try:
-             # Always run provision.sh (it is now idempotent/smart)
-             subprocess.Popen(['sudo', '/opt/roomsense/scripts/provision.sh'], 
-                              stdout=subprocess.DEVNULL, 
-                              stderr=subprocess.DEVNULL,
-                              start_new_session=True)
+             # [FIX 2B] Always run provision.sh via systemd-run for proper tracking
+             subprocess.run([
+                 'systemd-run', '--no-block', '--unit=roomsense-provision',
+                 '--description=RoomSense Provisioning',
+                 '/opt/roomsense/scripts/provision.sh'
+             ], check=False)
              
              # Stop self to let provision/production take over
              # BUT: since provision.sh might just restart services and exit (if no update),

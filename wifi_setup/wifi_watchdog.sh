@@ -102,12 +102,6 @@ fi
 
 log "Reconnection failed. Reverting to Setup Mode..."
 
-# [FIX 2A] Check if provisioning is running - don't interrupt it
-if pgrep -f "provision.sh" > /dev/null; then
-    log "Provisioning is in progress. Deferring watchdog action."
-    exit 0
-fi
-
 # Stop Production App (Nginx holds Port 80, which we need)
 # Also stop Docker (containers might hold Port 80, 443, etc)
 log "Stopping Nginx..."

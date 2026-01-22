@@ -20,18 +20,18 @@ apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm g
 systemctl disable nginx
 systemctl stop nginx
 
-# [FIX 1C] Configure DNS properly without destroying resolv.conf
-# This preserves captive portal functionality and local DNS resolution
-# We configure fallback DNS via NetworkManager instead of hardcoding resolv.conf
-echo "Configuring fallback DNS via NetworkManager..."
-mkdir -p /etc/NetworkManager/conf.d
-cat <<EOF > /etc/NetworkManager/conf.d/dns-servers.conf
-[global-dns-domain-*]
-servers=8.8.8.8,1.1.1.1
-EOF
+# Disable systemd-resolved to prevent conflict with dnsmasq on port 53
+# This is a common issue on modern Debian/Ubuntu systems
+echo "Disabling systemd-resolved (conflicts with dnsmasq)..."
+systemctl stop systemd-resolved
+systemctl disable systemd-resolved
 
-# Note: We do NOT disable systemd-resolved entirely - the dns=dnsmasq setting
-# in NetworkManager.conf (added below) handles DNS properly for our AP mode
+# Point resolv.conf to a static file instead of systemd-resolved stub
+if [ -L /etc/resolv.conf ]; then
+    rm /etc/resolv.conf
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+fi
 
 # 2. Setup Directory
 INSTALL_DIR="/opt/roomsense/wifi_setup"

@@ -172,10 +172,24 @@ class NetworkManager:
             return False
 
     def create_ap(self, ssid="RoomSenseSetup", password=None):
-        """Creates and starts the Hotspot."""
+        """Creates and starts the Hotspot, ensuring no other networks interfere."""
         logger.info("Creating AP...")
         
         iface = self.get_wifi_interface()
+        
+        # [FIX 1] Disable Auto-Connect on existing WiFi profiles
+        # This stops the "Scanning/Disappearing" behavior (Network Fighting)
+        try:
+            logger.info("Disabling auto-connect on existing WiFi profiles...")
+            output = self.run_command(['nmcli', '-t', '-f', 'UUID,TYPE', 'connection', 'show'])
+            if output:
+                for line in output.split('\n'):
+                    if 'wifi' in line or 'wireless' in line:
+                        uuid = line.split(':')[0]
+                        # Set autoconnect to no so NM stops switching away
+                        self.run_command(['nmcli', 'connection', 'modify', uuid, 'connection.autoconnect', 'no'])
+        except Exception as e:
+            logger.warning(f"Failed to disable auto-connect: {e}")
         
         # Explicitly disconnect current connections on the device to prevent interference
         self.run_command(['nmcli', 'device', 'disconnect', iface])

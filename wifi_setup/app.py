@@ -125,6 +125,10 @@ def connect():
             except Exception as e:
                 logger.error(f"Failed to start provisioning: {e}")
                 
+            # Exit clean to allow provision script to take over port 80 and services
+            logger.info("Exiting setup application to allow provisioning to proceed...")
+            os._exit(0) # Force exit thread and process
+                
         else:
             connection_status = "failed"
             current_message = "Failed to connect. Check password."

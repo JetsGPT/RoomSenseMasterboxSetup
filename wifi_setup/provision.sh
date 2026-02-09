@@ -17,6 +17,9 @@ date
 # Exit strictly on any error
 set -e
 
+# Ensure HOME is set for npm/git operations
+export HOME="/root"
+
 # 1. Wait for Internet
 echo "Waiting for internet connection..."
 while ! ping -c 1 -W 1 8.8.8.8; do
@@ -39,6 +42,7 @@ if [ -d "$INSTALL_DIR/backend" ]; then
 else
     echo "Cloning Backend..."
     git clone $BACKEND_REPO "$INSTALL_DIR/backend"
+    echo "Backend clone complete."
 fi
 
 # Frontend
@@ -51,6 +55,7 @@ if [ -d "$INSTALL_DIR/frontend" ]; then
 else
     echo "Cloning Frontend..."
     git clone $FRONTEND_REPO "$INSTALL_DIR/frontend"
+    echo "Frontend clone complete."
 fi
 
 # 3. Frontend Build & Deploy to Backend (Express)
@@ -63,8 +68,11 @@ cd "$INSTALL_DIR/frontend/roomsenseapp"
 
 # Clean npm cache and node_modules to ensure fresh build
 rm -rf node_modules/.cache dist
-npm install
+echo "Installing npm dependencies..."
+npm install --loglevel verbose
+echo "Running npm build..."
 npm run build
+echo "Frontend build complete."
 
 echo "Deploying Frontend to Backend (Express)..."
 # Clear old deploy and copy fresh build artifacts
@@ -74,6 +82,14 @@ echo "Frontend deployed."
 
 # 4. Backend Setup (Docker Swarm)
 echo "Starting Backend..."
+
+# FORCE CLEAN BUILD: Stop existing stack and remove old images
+echo "Stopping existing stack to force update..."
+docker stack rm roomsense || true
+echo "Waiting for stack to drain..."
+sleep 10
+echo "Pruning old images to force rebuild..."
+docker image prune -a -f || true
 
 # CRITICAL: Stop the setup service NOW (releases port 80 for nginx)
 # This must happen BEFORE deploying the stack, otherwise nginx can't bind to port 80
@@ -152,14 +168,14 @@ systemctl disable nginx
 if [ -f "/opt/roomsense/wifi_setup/.provisioned" ]; then
     echo "Update complete. Services restarted."
     # Service was already stopped before stack deployment
-    systemctl disable roomsense-setup.service
+    # Service remains enable for updates on boot
 else
     # First time provision
     echo "First time provisioning complete."
     touch /opt/roomsense/wifi_setup/.provisioned
     
     # Disable setup service FIRST
-    systemctl disable roomsense-setup.service
+    # Service remains enable for updates on boot
     
     echo "Rebooting in 5 seconds..."
     sleep 5

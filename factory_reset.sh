@@ -19,18 +19,43 @@ systemctl disable roomsense-setup.service wifi-watchdog.timer wifi-watchdog.serv
 
 # 2. Docker Swarm & Resource Cleanup
 echo "Cleaning up Docker..."
+
+# Remove the stack first (before leaving swarm) to gracefully stop services
+docker stack rm roomsense 2>/dev/null || true
+echo "Waiting for stack services to drain..."
+sleep 10
+
 # Leave Swarm (destroys all stack services and secrets)
 docker swarm leave --force 2>/dev/null || true
+
+# Wait for Docker to fully clean up after swarm leave
+sleep 5
 
 # Stop all running containers (for non-swarm containers)
 if [ -n "$(docker ps -q)" ]; then
     docker stop $(docker ps -q)
 fi
 
+# Explicitly remove known named volumes that may survive system prune
+# docker system prune --volumes only removes UNUSED volumes, but Swarm volumes
+# can be marked as in-use during the cleanup race after swarm leave
+echo "Removing Docker volumes explicitly..."
+docker volume rm roomsense_pgdata 2>/dev/null || true
+docker volume rm roomsense_influxdb_data 2>/dev/null || true
+docker volume rm roomsense_npm_data 2>/dev/null || true
+docker volume rm roomsense_npm_letsencrypt 2>/dev/null || true
+# Also try without stack prefix (in case of naming differences)
+docker volume rm pgdata 2>/dev/null || true
+docker volume rm influxdb_data 2>/dev/null || true
+
 # Deep Clean: Remove all containers, images, volumes, and networks
 # This ensures no old data/code persists
 echo "Pruning all Docker resources (volumes, images, networks, build cache)..."
 docker system prune -a --volumes -f
+
+# Final check: remove any remaining volumes
+echo "Removing any remaining Docker volumes..."
+docker volume ls -q 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
 
 # 3. Remove Service Files
 echo "Removing systemd units..."

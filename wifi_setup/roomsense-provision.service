@@ -1,0 +1,14 @@
+[Unit]
+Description=RoomSense Provisioning Service
+After=network-online.target docker.service NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/roomsense
+ExecStart=/opt/roomsense/scripts/provision.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

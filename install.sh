@@ -3,6 +3,8 @@
 # RoomSense WiFi Setup Installer
 # Run this as root
 
+set -euo pipefail
+
 if [ "$EUID" -ne 0 ]; then 
   echo "Please run as root"
   exit 1
@@ -57,8 +59,8 @@ chmod +x "$GLOBAL_SCRIPTS_DIR/wifi_watchdog.sh"
 
 # 3. Setup Python Environment
 echo "Setting up Python virtual environment..."
-python3 -m venv $INSTALL_DIR/venv
-$INSTALL_DIR/venv/bin/pip install flask
+python3 -m venv "$INSTALL_DIR/venv"
+"$INSTALL_DIR/venv/bin/pip" install flask
 
 # 4. Configure NetworkManager & Dnsmasq for Captive Portal
 echo "Configuring NetworkManager..."
@@ -72,15 +74,16 @@ if ! grep -q "dns=dnsmasq" /etc/NetworkManager/NetworkManager.conf; then
 fi
 
 mkdir -p /etc/NetworkManager/dnsmasq-shared.d/
-cp $INSTALL_DIR/dnsmasq.conf /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
+cp "$INSTALL_DIR/dnsmasq.conf" /etc/NetworkManager/dnsmasq-shared.d/roomsense.conf
 
 # 5. Signal Factory Reset for Next Boot
 echo "Signaling factory reset..."
-touch $INSTALL_DIR/.factory_reset
+touch "$INSTALL_DIR/.factory_reset"
 
 # 6. Install Systemd Services
 echo "Installing systemd services..."
-cp $INSTALL_DIR/roomsense-setup.service /etc/systemd/system/
+cp "$INSTALL_DIR/roomsense-setup.service" /etc/systemd/system/
+cp "$INSTALL_DIR/roomsense-provision.service" /etc/systemd/system/
 
 # Create Watchdog Service & Timer
 cat <<EOF > /etc/systemd/system/wifi-watchdog.service

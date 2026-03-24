@@ -1,23 +1,137 @@
-import threading
-import time
+import logging
 import os
 import subprocess
-import logging
+import threading
+import time
 
-from flask import Flask, render_template, request, jsonify, redirect
+from flask import Flask, jsonify, redirect, render_template, request
+
 from network_manager import NetworkManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('app')
+logger = logging.getLogger("app")
 
 app = Flask(__name__)
 nm = NetworkManager()
 
+SETUP_DIR = os.path.dirname(os.path.abspath(__file__))
+FACTORY_RESET_MARKER = os.path.join(SETUP_DIR, ".factory_reset")
+PROVISIONED_MARKER = os.path.join(SETUP_DIR, ".provisioned")
+PROVISIONING_MARKER = os.path.join(SETUP_DIR, ".provisioning")
+SETUP_SERVICE = "roomsense-setup.service"
+PROVISION_SERVICE = "roomsense-provision.service"
+SETUP_AP_NAME = "RoomSenseSetup"
+INTERNET_VALIDATION_TIMEOUT = 30
+
 # Global state
-connection_status = "idle" # idle, connecting, success, failed
-current_message = ""
-ap_mode_active = False  # Track if we're running in AP mode
+connection_status = "idle"
+current_message = "Setup hotspot is starting."
+ap_mode_active = False
+
+
+def set_connection_state(status, message=""):
+    global connection_status, current_message
+    connection_status = status
+    current_message = message
+
+
+def clear_provisioning_marker():
+    try:
+        os.remove(PROVISIONING_MARKER)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.warning("Failed to clear provisioning marker: %s", exc)
+
+
+def service_is_active(service_name):
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", service_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip() in {"active", "activating"}
+    except Exception as exc:
+        logger.warning("Failed to query %s state: %s", service_name, exc)
+        return False
+
+
+def is_provisioning_active():
+    active = service_is_active(PROVISION_SERVICE)
+    if not active and os.path.exists(PROVISIONING_MARKER):
+        logger.warning("Removing stale provisioning marker.")
+        clear_provisioning_marker()
+    return active
+
+
+def start_provisioning(reason):
+    if is_provisioning_active():
+        logger.info("Provisioning already active. Reusing current run. Reason=%s", reason)
+        return True
+
+    try:
+        with open(PROVISIONING_MARKER, "w", encoding="ascii"):
+            pass
+    except OSError as exc:
+        logger.error("Failed to create provisioning marker: %s", exc)
+        return False
+
+    try:
+        subprocess.run(
+            ["systemctl", "reset-failed", PROVISION_SERVICE],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        result = subprocess.run(
+            ["systemctl", "start", PROVISION_SERVICE],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or result.stdout or "unknown error").strip()
+            raise RuntimeError(stderr)
+        logger.info("Provisioning service started. Reason=%s", reason)
+        return True
+    except Exception as exc:
+        logger.error("Failed to start provisioning service: %s", exc)
+        clear_provisioning_marker()
+        return False
+
+
+def stop_setup_service_async(reason):
+    def _stop():
+        try:
+            logger.info("Stopping %s. Reason=%s", SETUP_SERVICE, reason)
+            subprocess.run(["systemctl", "stop", SETUP_SERVICE], check=False)
+        except Exception as exc:
+            logger.error("Failed to stop setup service: %s", exc)
+
+    threading.Thread(target=_stop, daemon=True).start()
+
+
+def stop_runtime_services_for_setup():
+    logger.info("Stopping runtime services before entering setup mode...")
+    for service_name in ("nginx", "docker"):
+        try:
+            subprocess.run(["systemctl", "stop", service_name], check=False)
+        except Exception as exc:
+            logger.warning("Failed to stop %s: %s", service_name, exc)
+
+
+def start_hotspot_mode(reason):
+    global ap_mode_active
+
+    logger.info("Starting hotspot mode. Reason=%s", reason)
+    stop_runtime_services_for_setup()
+    nm.create_ap()
+    ap_mode_active = True
+    set_connection_state("idle", "Setup hotspot is ready.")
+    return True
 
 
 def background_wifi_monitor():
@@ -25,236 +139,227 @@ def background_wifi_monitor():
     Background thread that monitors for saved WiFi networks becoming available.
     Only runs when we're in AP mode. Checks every 2 minutes if a saved network
     is visible, and if so, logs this for the user (they should reconnect via portal).
-    
+
     Note: We can't automatically switch because toggling networking would kill
     the AP that users are connected to. Instead, we just monitor.
     """
+
     global ap_mode_active
-    
+
     while True:
-        time.sleep(120)  # Check every 2 minutes
-        
+        time.sleep(120)
+
         if not ap_mode_active:
             continue
-            
+
         logger.info("[WiFi Monitor] Scanning for available networks while in AP mode...")
-        
+
         try:
-            # Get list of saved connections
             result = subprocess.run(
-                ['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'],
-                capture_output=True, text=True
+                ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+                capture_output=True,
+                text=True,
+                check=False,
             )
             saved_ssids = set()
             if result.returncode == 0:
-                for line in result.stdout.strip().split('\n'):
-                    if ':wifi' in line or ':802-11-wireless' in line:
-                        saved_ssids.add(line.split(':')[0])
-            
-            # Scan for visible networks (this works even in AP mode)
+                for line in result.stdout.strip().split("\n"):
+                    parts = line.rsplit(":", 1)
+                    if len(parts) == 2 and parts[1] in {"wifi", "802-11-wireless"}:
+                        saved_ssids.add(parts[0])
+
             visible = nm.scan_wifi()
-            visible_ssids = {n['ssid'] for n in visible}
-            
-            # Check if any saved network is now visible
+            visible_ssids = {network["ssid"] for network in visible}
+
             available = saved_ssids & visible_ssids
             if available:
-                logger.info(f"[WiFi Monitor] Saved networks available: {available}")
+                logger.info("[WiFi Monitor] Saved networks available: %s", available)
                 logger.info("[WiFi Monitor] User can reconnect via the setup portal.")
-                    
-        except Exception as e:
-            logger.error(f"[WiFi Monitor] Error during scan: {e}")
 
-@app.route('/')
+        except Exception as exc:
+            logger.error("[WiFi Monitor] Error during scan: %s", exc)
+
+
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-@app.route('/generate_204')
-@app.route('/ncsi.txt')
-@app.route('/hotspot-detect.html')
+
+@app.route("/generate_204")
+@app.route("/ncsi.txt")
+@app.route("/hotspot-detect.html")
 def captive_portal_check():
-    return redirect('/', code=302)
+    return redirect("/", code=302)
 
-@app.route('/api/scan')
+
+@app.route("/api/scan")
 def scan():
     try:
         networks = nm.scan_wifi()
         return jsonify(networks)
-    except Exception as e:
-        logger.error(f"Scan failed: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception as exc:
+        logger.error("Scan failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
 
-@app.route('/api/connect', methods=['POST'])
+
+@app.route("/api/connect", methods=["POST"])
 def connect():
-    global connection_status, current_message
-    data = request.json
-    ssid = data.get('ssid')
-    password = data.get('password')
-    
+    global ap_mode_active
+
+    if connection_status in {"connecting", "validating", "provisioning"} or is_provisioning_active():
+        return jsonify({"error": "Setup is already processing a connection request."}), 409
+
+    data = request.get_json(silent=True) or {}
+    ssid = data.get("ssid")
+    password = data.get("password")
+
     if not ssid:
-        return jsonify({'error': 'SSID required'}), 400
-        
-    connection_status = "connecting"
-    current_message = f"Connecting to {ssid}..."
-    
+        return jsonify({"error": "SSID required"}), 400
+
+    set_connection_state("connecting", f"Connecting to {ssid}...")
+
     def connect_thread():
-        global connection_status, current_message, nm
-        # This will attempt WiFi connection. AP teardown is now DELAYED.
+        global ap_mode_active
+
         success = nm.connect_wifi(ssid, password)
-        
-        if success:
-            connection_status = "success"
-            current_message = "Connected successfully! Provisioning..."
-            logger.info("Connection success. Waiting 3s for frontend to poll...")
-            
-            # [FIX 1A] Grace period for frontend to receive success status
-            # before we kill the AP and phone disconnects
-            time.sleep(3)
-            
-            # NOW stop the AP (phone will disconnect after this)
-            nm.run_command(['nmcli', 'connection', 'down', 'RoomSenseSetup'])
-            
-            # [FIX 2B] Use systemd-run for proper process tracking
-            # This ensures systemd manages the provisioning process
-            logger.info("Triggering provisioning via systemd-run...")
-            try:
-                subprocess.run([
-                    'systemd-run', '--no-block', '--unit=roomsense-provision',
-                    '--description=RoomSense Provisioning',
-                    '/opt/roomsense/scripts/provision.sh'
-                ], check=False)
-            except Exception as e:
-                logger.error(f"Failed to start provisioning: {e}")
-                
-            # Exit clean to allow provision script to take over port 80 and services
-            logger.info("Exiting setup application to allow provisioning to proceed...")
-            os._exit(0) # Force exit thread and process
-                
-        else:
-            connection_status = "failed"
-            current_message = "Failed to connect. Check password."
+        if not success:
+            ap_mode_active = True
+            set_connection_state("failed", "Failed to connect. Check password and signal strength.")
             logger.error("Connection failed.")
+            return
 
-    # Start thread
-    threading.Thread(target=connect_thread).start()
-    
-    return jsonify({'status': 'started'})
+        ap_mode_active = False
+        set_connection_state("validating", f"Connected to {ssid}. Verifying internet access...")
+        logger.info("WiFi association succeeded. Verifying internet access...")
 
-@app.route('/api/status')
+        if not nm.wait_for_internet(timeout=INTERNET_VALIDATION_TIMEOUT, interval=3):
+            logger.warning("Internet validation failed. Restoring hotspot mode.")
+            try:
+                start_hotspot_mode("internet validation failed after WiFi join")
+            except Exception as exc:
+                logger.error("Failed to restore hotspot after internet validation error: %s", exc)
+            set_connection_state(
+                "failed_no_internet",
+                "Connected to WiFi, but internet access could not be verified. Setup mode has been restored.",
+            )
+            return
+
+        set_connection_state("provisioning", "Internet verified. Checking for updates and provisioning...")
+        logger.info("Internet verified. Waiting 3s for frontend to poll before handoff...")
+        time.sleep(3)
+
+        nm.run_command(["nmcli", "connection", "down", SETUP_AP_NAME])
+
+        if start_provisioning("wifi connection completed"):
+            logger.info("Provisioning started. Stopping setup service...")
+            stop_setup_service_async("handoff after successful WiFi validation")
+            return
+
+        logger.error("Provisioning failed to start after internet verification. Restoring hotspot.")
+        try:
+            start_hotspot_mode("failed to start provisioning service")
+        except Exception as exc:
+            logger.error("Failed to restore hotspot after provisioning startup error: %s", exc)
+        set_connection_state(
+            "failed",
+            "Connected to the network, but failed to start provisioning. Setup mode has been restored.",
+        )
+
+    threading.Thread(target=connect_thread, daemon=True).start()
+
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/status")
 def status():
-    return jsonify({'status': connection_status, 'message': current_message})
-
+    return jsonify({"status": connection_status, "message": current_message})
 
 
 def check_and_start_ap():
-    """Checks connection status on startup and creates AP if needed."""
-    global ap_mode_active  # Must be at top of function
-    
-    # Grace Period: Wait for router to wake up (max 30s)
+    """Checks connection status on startup and decides whether setup mode should run."""
+
+    global ap_mode_active
+
     logger.info("Waiting for internet/connection (Grace Period)...")
-    for i in range(10): # 10 * 3s = 30s
+    for _ in range(10):
         if nm.is_connected_to_internet():
             break
-        # Also check if we are just connected to wifi but no internet yet (DHCP slow)
-        connected, _ = nm.is_connected()
-        if connected: 
-             # Give it a bit more time for valid IP
-             pass
         time.sleep(3)
-        
-    # Check for factory reset marker
-    if os.path.exists('.factory_reset'):
-        logger.info("Factory reset marker found. Clearing all WiFi connections...")
-        
-        # STOP DOCKER to free Port 80 (prevent conflict with old containers)
-        try:
-             subprocess.run(['systemctl', 'stop', 'docker'], check=False)
-        except Exception:
-             pass
+
+    if os.path.exists(FACTORY_RESET_MARKER):
+        logger.info("Factory reset marker found. Clearing saved WiFi connections...")
+        stop_runtime_services_for_setup()
 
         try:
             nm.delete_all_connections()
-        except:
-             pass # Fail safe
-             
-        try:
-            os.remove('.factory_reset')
-        except OSError:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to clear WiFi connections during factory reset: %s", exc)
 
-        try:
-            os.remove('.provisioned') # Clean up provision marker on factory reset
-        except OSError:
-            pass
-        
-        logger.info("Starting Hotspot after factory reset...")
-        nm.create_ap()
-        ap_mode_active = True
-        return
+        for marker in (FACTORY_RESET_MARKER, PROVISIONED_MARKER, PROVISIONING_MARKER):
+            try:
+                os.remove(marker)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning("Failed to remove marker %s: %s", marker, exc)
 
-    # Check internet connectivity or active wifi connection
+        return start_hotspot_mode("factory reset requested")
+
+    if is_provisioning_active():
+        logger.info("Provisioning is already active. Setup service will exit.")
+        ap_mode_active = False
+        return False
+
     if nm.is_connected_to_internet():
-         logger.info("Internet connected. Triggering auto-update/provisioning...")
-         try:
-             # [FIX 2B] Always run provision.sh via systemd-run for proper tracking
-             subprocess.run([
-                 'systemd-run', '--no-block', '--unit=roomsense-provision',
-                 '--description=RoomSense Provisioning',
-                 '/opt/roomsense/scripts/provision.sh'
-             ], check=False)
-             
-             # Stop self to let provision/production take over
-             # BUT: since provision.sh might just restart services and exit (if no update),
-             # we should strictly let provision.sh handle the stopping of this service if needed.
-             # However, provision.sh DOES stop this service. So this is fine.
-             subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
-             return
-         except Exception as e:
-             logger.error(f"Failed to start auto-update: {e}")
+        logger.info("Internet connected on startup. Checking for updates...")
+        set_connection_state("provisioning", "Internet connection detected. Checking for updates...")
+        ap_mode_active = False
+        if start_provisioning("startup internet detected"):
+            return False
+        logger.error("Failed to start provisioning on startup. Keeping setup app available.")
+        set_connection_state("failed", "Internet is available, but provisioning could not be started.")
+        return True
 
-         logger.info("Internet connected. Switching to Production...")
-         # Verification: Do NOT start Nginx (Docker handles frontend now)
-         # subprocess.run(['systemctl', 'start', 'nginx'], check=False)
-         # Stop self
-         subprocess.run(['systemctl', 'stop', 'roomsense-setup.service'], check=False)
-         return
-    else:
-        # Check if we are connected to a router at least (but maybe no internet)
-        connected, name = nm.is_connected()
-        if connected:
-             logger.info(f"Connected to {name}, but maybe no internet? Checking...")
-             if nm.is_connected_to_internet():
-                 logger.info("Internet verified.")
-                 return
+    connected, name = nm.is_connected()
+    if connected:
+        logger.info("Connected to %s, waiting briefly for internet...", name)
+        if nm.wait_for_internet(timeout=15, interval=3):
+            logger.info("Internet became available on %s during startup grace window.", name)
+            set_connection_state("provisioning", "Internet connection detected. Checking for updates...")
+            ap_mode_active = False
+            if start_provisioning("startup internet recovered"):
+                return False
+            logger.error("Failed to start provisioning after internet recovery.")
+            set_connection_state("failed", "Internet is available, but provisioning could not be started.")
+            return True
 
-        # Attempt to trigger reconnection before starting AP
-        logger.info("Attempting to trigger network reconnection...")
-        try:
-            subprocess.run(['nmcli', 'networking', 'off'], check=False)
-            time.sleep(2)
-            subprocess.run(['nmcli', 'networking', 'on'], check=False)
-            time.sleep(15)  # Wait for possible reconnection
-            
-            if nm.is_connected_to_internet():
-                logger.info("Reconnection successful after toggle.")
-                return
-        except Exception as e:
-            logger.error(f"Reconnection attempt failed: {e}")
-
-        logger.info("No valid internet connection found. Starting Hotspot...")
-        nm.create_ap()
-        ap_mode_active = True
-
-if __name__ == '__main__':
-    # Ensure Nginx and Docker are not running and hogging port 80
+    logger.info("Attempting to trigger network reconnection...")
     try:
-        subprocess.run(['systemctl', 'stop', 'nginx'], check=False)
-        subprocess.run(['systemctl', 'stop', 'docker'], check=False)
-    except Exception:
-        pass
+        subprocess.run(["nmcli", "networking", "off"], check=False)
+        time.sleep(2)
+        subprocess.run(["nmcli", "networking", "on"], check=False)
+        if nm.wait_for_internet(timeout=15, interval=3):
+            logger.info("Reconnection successful after networking toggle.")
+            set_connection_state("provisioning", "Internet connection detected. Checking for updates...")
+            ap_mode_active = False
+            if start_provisioning("startup reconnection succeeded"):
+                return False
+            logger.error("Failed to start provisioning after reconnection.")
+            set_connection_state("failed", "Internet is available, but provisioning could not be started.")
+            return True
+    except Exception as exc:
+        logger.error("Reconnection attempt failed: %s", exc)
 
-    # Start background WiFi monitor thread (checks for WiFi returning while in AP mode)
+    logger.info("No valid internet connection found. Starting hotspot.")
+    return start_hotspot_mode("no valid internet connection on startup")
+
+
+if __name__ == "__main__":
     monitor_thread = threading.Thread(target=background_wifi_monitor, daemon=True)
     monitor_thread.start()
 
-    check_and_start_ap()
-    app.run(host='0.0.0.0', port=80, threaded=True)
+    should_run_server = check_and_start_ap()
+    if should_run_server:
+        app.run(host="0.0.0.0", port=80, threaded=True)
+    else:
+        logger.info("Setup service handed off to provisioning. Exiting.")

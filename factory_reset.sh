@@ -14,7 +14,7 @@ echo "starting cleanup..."
 
 # 1. Stop and Disable Services
 echo "Stopping services..."
-systemctl stop roomsense-setup.service wifi-watchdog.timer wifi-watchdog.service docker nginx
+systemctl stop roomsense-setup.service roomsense-provision.service wifi-watchdog.timer wifi-watchdog.service docker nginx
 systemctl disable roomsense-setup.service wifi-watchdog.timer wifi-watchdog.service
 
 # 2. Docker Swarm & Resource Cleanup
@@ -60,6 +60,7 @@ docker volume ls -q 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
 # 3. Remove Service Files
 echo "Removing systemd units..."
 rm -f /etc/systemd/system/roomsense-setup.service
+rm -f /etc/systemd/system/roomsense-provision.service
 rm -f /etc/systemd/system/wifi-watchdog.service
 rm -f /etc/systemd/system/wifi-watchdog.timer
 systemctl daemon-reload

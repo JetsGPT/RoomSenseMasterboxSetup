@@ -1,8 +1,6 @@
 import subprocess
 import logging
 import time
-import re
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +18,9 @@ class NetworkManager:
                 capture_output=True, text=True, check=True, timeout=10
             )
             for line in result.stdout.strip().split('\n'):
-                if ':wifi' in line:
-                    self._wifi_interface = line.split(':')[0]
+                parts = line.rsplit(':', 1)
+                if len(parts) == 2 and parts[1] == 'wifi':
+                    self._wifi_interface = parts[0]
                     logger.info(f"Detected WiFi interface: {self._wifi_interface}")
                     return self._wifi_interface
         except Exception as e:
@@ -107,11 +106,20 @@ class NetworkManager:
         except subprocess.CalledProcessError:
             return False
 
+    def wait_for_internet(self, timeout=30, interval=3):
+        """Waits for internet access to become available within the timeout window."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.is_connected_to_internet():
+                return True
+            time.sleep(interval)
+        return False
+
     def connect_wifi(self, ssid, password):
         """
-        Attempts to connect to WiFi.
-        CRITICAL: On single-radio devices, we must STOP the AP before connecting as client.
-        We cannot easily "try" and "fallback" without dropping the user connection.
+        Attempts to connect to WiFi at the link layer.
+        Internet validation is handled separately by the caller so the setup flow can
+        restore the AP if association succeeds but internet access is unavailable.
         """
         logger.info(f"Attempting to connect to {ssid}...")
         
@@ -121,7 +129,7 @@ class NetworkManager:
         if output:
             for line in output.split('\n'):
                 if not line: continue
-                parts = line.split(':')
+                parts = line.rsplit(':', 2)
                 if len(parts) >= 3 and ('wifi' in parts[2] or 'wireless' in parts[2]):
                     uuid = parts[0]
                     name = parts[1]
@@ -139,35 +147,20 @@ class NetworkManager:
         if password:
             cmd.extend(['password', password])
         
-        # We give it a generous timeout because DHCP can take time
-        # but nmcli connect waits for activation.
-        success = False
         # Hide password in logs
         result = self.run_command(cmd, sensitive=True if password else False)
         
         if result:
-            # Check internet verification
-            time.sleep(5) # Wait for IP stabilization
-            if self.is_connected_to_internet():
-                logger.info("Internet connection verified!")
-                success = True
-            else:
-                logger.warning("Connected to WiFi but no Internet access.")
-                # We consider this a "success" for WiFi layer, but maybe "failure" for provisioning?
-                # Requirement says: "Master Box to automatically download... once it successfully connects to the internet"
-                # If we have no internet, we can't provision. 
-                # Should we fail back to AP?
-                # User might have a local-only network. But the goal is downloading from GitHub.
-                # Let's count it as success, but warn? Or fail?
-                # For safety, let's treat it as success, start provision script, provision script will wait for internet.
-                success = True
-        
-        if success:
+            # Give DHCP a brief moment before the caller starts internet validation.
+            time.sleep(5)
+            logger.info("WiFi association succeeded. Internet validation will follow.")
+            # Ensure the saved client profile can reconnect on future boots.
+            self.run_command(['nmcli', 'connection', 'modify', ssid, 'connection.autoconnect', 'yes'])
             return True
-        else:
-            logger.error("Failed to connect. Restoring AP...")
-            self.create_ap()
-            return False
+
+        logger.error("Failed to connect. Restoring AP...")
+        self.create_ap()
+        return False
 
     def create_ap(self, ssid="RoomSenseSetup", password=None):
         """Creates and starts the Hotspot, ensuring no other networks interfere."""
@@ -231,7 +224,7 @@ class NetworkManager:
         if output:
             for line in output.split('\n'):
                 if not line: continue
-                parts = line.split(':')
+                parts = line.split(':', 2)
                 # wifi:connected:MySSID
                 if len(parts) >= 3 and parts[0] == 'wifi' and parts[1] == 'connected':
                      return True, parts[2]

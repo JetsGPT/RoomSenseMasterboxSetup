@@ -40,8 +40,10 @@ log "Watchdog started."
 # Ensure we try to connect to saved networks before assuming we need the Hotspot.
 # This fixes the issue where the device remembers 'autoconnect=no' from the previous AP session.
 log "Ensuring saved networks are set to auto-connect..."
-/usr/bin/nmcli -t -f UUID,TYPE connection show | grep -E 'wifi|wireless' | cut -d: -f1 | while read uuid; do
-    /usr/bin/nmcli connection modify "$uuid" connection.autoconnect yes
+/usr/bin/nmcli -t -f UUID,NAME,TYPE connection show | while IFS=: read -r uuid name type; do
+    if [[ "$type" =~ wifi|wireless ]] && [ "$name" != "RoomSenseSetup" ]; then
+        /usr/bin/nmcli connection modify "$uuid" connection.autoconnect yes
+    fi
 done
 
 # EDGE CASE: If setup service (AP mode) is already active, skip monitoring
@@ -49,6 +51,12 @@ done
 IS_SETUP_ACTIVE=$($SYSTEMCTL_CMD is-active roomsense-setup.service 2>/dev/null)
 if [ "$IS_SETUP_ACTIVE" = "active" ]; then
     log "Setup service is active (AP mode). Skipping connectivity check."
+    exit 0
+fi
+
+IS_PROVISION_ACTIVE=$($SYSTEMCTL_CMD is-active roomsense-provision.service 2>/dev/null)
+if [ "$IS_PROVISION_ACTIVE" = "active" ] || [ "$IS_PROVISION_ACTIVE" = "activating" ]; then
+    log "Provisioning service is active. Skipping connectivity check."
     exit 0
 fi
 
@@ -103,7 +111,7 @@ fi
 log "Reconnection failed. Reverting to Setup Mode..."
 
 # [FIX 2A] Check if provisioning is running - don't interrupt it
-if pgrep -f "provision.sh" > /dev/null; then
+if pgrep -f "provision.sh" > /dev/null || [ "$IS_PROVISION_ACTIVE" = "active" ] || [ "$IS_PROVISION_ACTIVE" = "activating" ]; then
     log "Provisioning is in progress. Deferring watchdog action."
     exit 0
 fi

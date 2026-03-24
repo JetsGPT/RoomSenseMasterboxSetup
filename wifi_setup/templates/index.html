@@ -152,7 +152,6 @@
             }
         }
 
-        /* Setup Mode Warning */
         .warning {
             background-color: #fff3cd;
             color: #856404;
@@ -170,8 +169,8 @@
         <h1>RoomSense Setup</h1>
 
         <div class="warning">
-            <strong>Note:</strong> Connecting will disconnect this device from the Hotspot. If successful, the device
-            will reboot. If checks fail, the Hotspot will reappear.
+            <strong>Note:</strong> Connecting pauses the setup hotspot while RoomSense validates the WiFi connection.
+            If internet access cannot be verified, setup mode returns automatically.
         </div>
 
         <div id="loading">
@@ -194,11 +193,11 @@
 
     <div id="connecting-modal" class="modal">
         <div class="modal-content" style="text-align: center;">
-            <div class="spinner" style="width: 40px; height: 40px; margin-bottom: 16px;"></div>
-            <h3>Connecting...</h3>
-            <p>Please wait. The device is verifying the connection.</p>
-            <p style="font-size: 0.8em; color: #666;">The hotspot may disappear. If connection succeeds, you can close
-                this window.</p>
+            <div id="connecting-spinner" class="spinner" style="width: 40px; height: 40px; margin-bottom: 16px;"></div>
+            <h3 id="connecting-title">Connecting...</h3>
+            <p id="connecting-message">Please wait while the device joins WiFi.</p>
+            <p id="connecting-help" style="font-size: 0.8em; color: #666;">The hotspot may disappear briefly during
+                validation.</p>
         </div>
     </div>
 
@@ -207,30 +206,45 @@
         const loading = document.getElementById('loading');
         const passwordModal = document.getElementById('password-modal');
         const connectingModal = document.getElementById('connecting-modal');
+        const connectingSpinner = document.getElementById('connecting-spinner');
+        const connectingTitle = document.getElementById('connecting-title');
+        const connectingMessage = document.getElementById('connecting-message');
+        const connectingHelp = document.getElementById('connecting-help');
         const passwordInput = document.getElementById('password-input');
         const errorMsg = document.getElementById('error-message');
         let selectedSSID = '';
 
+        function updateConnectingModal({ title, message, help, showSpinner = true }) {
+            connectingSpinner.style.display = showSpinner ? 'block' : 'none';
+            connectingTitle.textContent = title;
+            connectingMessage.textContent = message;
+            connectingHelp.textContent = help;
+        }
+
         async function scanNetworks() {
             try {
                 const response = await fetch('/api/scan');
-                const networks = await response.json();
+                const payload = await response.json();
+                if (!response.ok || !Array.isArray(payload)) {
+                    throw new Error(payload.error || 'Failed to scan networks.');
+                }
 
                 loading.style.display = 'none';
                 networkList.innerHTML = '';
                 networkList.style.display = 'block';
+                errorMsg.style.display = 'none';
 
-                if (networks.length === 0) {
+                if (payload.length === 0) {
                     networkList.innerHTML = '<li style="padding:16px; text-align:center;">No networks found</li>';
                     return;
                 }
 
-                networks.forEach(net => {
+                payload.forEach(net => {
                     const li = document.createElement('li');
                     li.className = 'network-item';
                     li.innerHTML = `
                         <span class="network-ssid">${net.ssid}</span>
-                        <span class="network-signal">Signal: ${net.signal}% ${net.security ? '🔒' : '🔓'}</span>
+                        <span class="network-signal">Signal: ${net.signal}% ${net.security && net.security !== 'NONE' ? 'Secured' : 'Open'}</span>
                     `;
                     li.onclick = () => showPasswordModal(net.ssid, net.security);
                     networkList.appendChild(li);
@@ -247,8 +261,7 @@
             document.getElementById('selected-ssid').textContent = ssid;
             passwordInput.value = '';
 
-            if (!security || security === 'NONE') {
-                // No password needed
+            if (!security || security === 'NONE' || security === '--') {
                 connectToNetwork(ssid, null);
             } else {
                 passwordModal.style.display = 'flex';
@@ -267,6 +280,12 @@
         async function connectToNetwork(ssid, password) {
             passwordModal.style.display = 'none';
             connectingModal.style.display = 'flex';
+            updateConnectingModal({
+                title: 'Connecting...',
+                message: 'Joining the selected WiFi network.',
+                help: 'The hotspot may disappear briefly while RoomSense validates internet access.',
+                showSpinner: true
+            });
 
             try {
                 const response = await fetch('/api/connect', {
@@ -276,63 +295,73 @@
                 });
 
                 const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to start connection.');
+                }
 
-                // Poll for status
-                // Since the network might drop, polling might fail immediately.
-                // We should handle that gracefully.
                 checkStatus();
             } catch (e) {
-                console.error("Connect req failed", e);
-                // Likely network switched, which acts as "success" for the command sent
+                console.error('Connect request failed', e);
+                connectingModal.style.display = 'none';
+                alert(e.message || 'Failed to start connection.');
             }
         }
 
         async function checkStatus() {
             let retries = 0;
-            const maxRetries = 20; // 20 * 2s = 40s
+            const maxRetries = 20;
 
             const interval = setInterval(async () => {
                 try {
                     const res = await fetch('/api/status');
                     const data = await res.json();
 
-                    if (data.status === 'success') {
+                    if (data.status === 'connecting') {
+                        updateConnectingModal({
+                            title: 'Connecting...',
+                            message: data.message || 'Joining the selected WiFi network.',
+                            help: 'The hotspot may disappear briefly while the device changes networks.',
+                            showSpinner: true
+                        });
+                    } else if (data.status === 'validating') {
+                        updateConnectingModal({
+                            title: 'Validating Internet...',
+                            message: data.message || 'WiFi connected. Checking for internet access.',
+                            help: 'If validation fails, the setup hotspot will come back automatically.',
+                            showSpinner: true
+                        });
+                    } else if (data.status === 'provisioning' || data.status === 'success') {
                         clearInterval(interval);
-                        connectingModal.innerHTML = `
-                            <div class="modal-content" style="text-align: center;">
-                                <h3 style="color: green;">Connected!</h3>
-                                <p>Device is provisioning and will reboot.</p>
-                                <p>You can reconnect your phone to your home WiFi.</p>
-                            </div>
-                        `;
-                    } else if (data.status === 'failed') {
+                        updateConnectingModal({
+                            title: 'Connected!',
+                            message: data.message || 'The device is checking for updates and provisioning.',
+                            help: 'You can reconnect your phone to your home WiFi.',
+                            showSpinner: false
+                        });
+                    } else if (data.status === 'failed' || data.status === 'failed_no_internet') {
                         clearInterval(interval);
                         connectingModal.style.display = 'none';
                         alert(`Connection Failed: ${data.message || 'Unknown error'}`);
+                        loading.style.display = 'block';
+                        networkList.style.display = 'none';
+                        scanNetworks();
                     }
                 } catch (e) {
-                    // Start counting connectivity errors. 
-                    // If we can't reach the API, the AP might be down -> Good sign (switching modes)
-                    // OR it crashed. 
                     retries++;
-                    console.log("Status check failed (" + retries + ")");
-                    if (retries > 30) {
+                    console.log('Status check failed (' + retries + ')');
+                    if (retries >= maxRetries) {
                         clearInterval(interval);
-                        // Assume success or user lost connection
-                        connectingModal.innerHTML = `
-                            <div class="modal-content" style="text-align: center;">
-                                <h3>Connection Changed</h3>
-                                <p>The Setup Hotspot has stopped.</p>
-                                <p>If the device successfully connected, it is now rebooting.</p>
-                                <p>If not, the hotspot will reappear in a few minutes.</p>
-                            </div>
-                        `;
+                        updateConnectingModal({
+                            title: 'Connection Changed',
+                            message: 'The setup hotspot is no longer reachable.',
+                            help: 'If provisioning started successfully, the device is now updating on your main WiFi.',
+                            showSpinner: false
+                        });
                     }
                 }
             }, 2000);
         }
 
-        // Start scan on load
         scanNetworks();
     </script>
 </body>

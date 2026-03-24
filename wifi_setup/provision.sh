@@ -14,7 +14,6 @@ BACKEND_BRANCH="main"
 FRONTEND_REPO="https://github.com/JetsGPT/RoomSenseAppReact.git"
 FRONTEND_BRANCH="main"
 STACK_NAME="roomsense"
-ROOMSENSE_HOST="roomsense.local"
 PRODUCTION_READY=0
 
 # Redirect stdout/stderr to log
@@ -91,136 +90,6 @@ update_repo_to_latest_main() {
         echo "Cloning $name..."
         git clone --branch "$branch" --single-branch "$repo_url" "$target_dir"
         echo "$name clone complete."
-    fi
-}
-
-extract_index_assets() {
-    local index_file="$1"
-    grep -oE '/assets/[^"'"'"'[:space:]]+' "$index_file" | sed 's#^/##' | sort -u
-}
-
-verify_frontend_dist_assets() {
-    local dist_dir="$1"
-    local index_file="$dist_dir/index.html"
-    local found_asset=0
-
-    if [ ! -f "$index_file" ]; then
-        echo "Frontend index.html is missing from $dist_dir"
-        return 1
-    fi
-
-    while IFS= read -r asset; do
-        [ -n "$asset" ] || continue
-        found_asset=1
-
-        if [ ! -f "$dist_dir/$asset" ]; then
-            echo "Frontend build is missing referenced asset: $asset"
-            return 1
-        fi
-    done < <(extract_index_assets "$index_file")
-
-    if [ "$found_asset" -ne 1 ]; then
-        echo "Frontend index.html does not reference any hashed assets."
-        return 1
-    fi
-}
-
-publish_frontend_build() {
-    local dist_dir="$1"
-    local deploy_dir="$2"
-    local entry
-    local base_name
-
-    verify_frontend_dist_assets "$dist_dir"
-
-    mkdir -p "$deploy_dir/assets"
-
-    echo "Publishing frontend assets..."
-    cp -r "$dist_dir/assets/." "$deploy_dir/assets/"
-
-    shopt -s nullglob
-    for entry in "$dist_dir"/*; do
-        base_name=$(basename "$entry")
-        case "$base_name" in
-            index.html|assets)
-                continue
-                ;;
-        esac
-
-        if [ -d "$entry" ]; then
-            mkdir -p "$deploy_dir/$base_name"
-            cp -r "$entry/." "$deploy_dir/$base_name/"
-        else
-            cp "$entry" "$deploy_dir/$base_name"
-        fi
-    done
-    shopt -u nullglob
-
-    cp "$dist_dir/index.html" "$deploy_dir/index.html"
-    echo "Frontend assets published safely."
-}
-
-curl_local_https_path() {
-    local request_path="$1"
-    local output_file="${2:-/dev/null}"
-    local ca_cert="$INSTALL_DIR/backend/webserver/certs/rootCA.crt"
-
-    if [ ! -f "$ca_cert" ]; then
-        echo "Local CA certificate not found at $ca_cert"
-        return 1
-    fi
-
-    curl --fail --silent --show-error \
-        --cacert "$ca_cert" \
-        --resolve "${ROOMSENSE_HOST}:443:127.0.0.1" \
-        --output "$output_file" \
-        "https://${ROOMSENSE_HOST}${request_path}"
-}
-
-wait_for_live_https_path() {
-    local request_path="$1"
-    local output_file="${2:-/dev/null}"
-    local timeout="${3:-60}"
-    local start_time
-    start_time=$(date +%s)
-
-    while true; do
-        if curl_local_https_path "$request_path" "$output_file" >/dev/null 2>&1; then
-            echo "Live path ${request_path} is reachable."
-            return 0
-        fi
-
-        if [ $(( $(date +%s) - start_time )) -ge "$timeout" ]; then
-            echo "Timed out waiting for live path ${request_path}."
-            return 1
-        fi
-
-        echo "Waiting for live path ${request_path}..."
-        sleep 2
-    done
-}
-
-verify_live_frontend() {
-    local live_index_file="/tmp/roomsense-live-index.html"
-    local lazy_chunk=""
-
-    echo "Verifying live frontend shell..."
-    wait_for_live_https_path "/" "$live_index_file" 90
-
-    echo "Verifying live entry assets..."
-    while IFS= read -r asset; do
-        [ -n "$asset" ] || continue
-        wait_for_live_https_path "/$asset" /dev/null 30
-    done < <(extract_index_assets "$live_index_file")
-
-    lazy_chunk=$(find "$INSTALL_DIR/frontend/roomsenseapp/dist/assets" -maxdepth 1 -type f -name '*.js' ! -name 'index-*.js' | head -n 1 || true)
-    if [ -n "$lazy_chunk" ]; then
-        local lazy_asset_path="${lazy_chunk#$INSTALL_DIR/frontend/roomsenseapp/dist/}"
-        echo "Verifying live lazy chunk /$lazy_asset_path..."
-        wait_for_live_https_path "/$lazy_asset_path" /dev/null 30
-    else
-        echo "No lazy chunk was found in the frontend dist/assets directory."
-        return 1
     fi
 }
 
@@ -333,7 +202,6 @@ update_repo_to_latest_main "Backend" "$BACKEND_REPO" "$BACKEND_BRANCH" "$INSTALL
 update_repo_to_latest_main "Frontend" "$FRONTEND_REPO" "$FRONTEND_BRANCH" "$INSTALL_DIR/frontend"
 
 DEPLOY_TARGET="$INSTALL_DIR/backend/webserver/src/public"
-FRONTEND_DIST_DIR="$INSTALL_DIR/frontend/roomsenseapp/dist"
 mkdir -p "$DEPLOY_TARGET"
 
 echo "Building Frontend..."
@@ -347,7 +215,8 @@ npm run build
 echo "Frontend build complete."
 
 echo "Deploying Frontend to Backend (Express)..."
-publish_frontend_build "$FRONTEND_DIST_DIR" "$DEPLOY_TARGET"
+rm -rf "${DEPLOY_TARGET:?}/"*
+cp -r "$INSTALL_DIR/frontend/roomsenseapp/dist/"* "$DEPLOY_TARGET/"
 echo "Frontend deployed."
 
 echo "Starting Backend..."
@@ -415,7 +284,6 @@ fi
 chmod +x scripts/init/start.sh
 ./scripts/init/start.sh
 wait_for_stack_health
-verify_live_frontend
 
 echo "Transitioning to Production Mode..."
 systemctl enable wifi-watchdog.timer

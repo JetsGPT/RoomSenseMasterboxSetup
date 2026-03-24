@@ -15,7 +15,7 @@ echo "Starting RoomSense Setup installation..."
 # 1. Install Dependencies
 echo "Installing system dependencies..."
 apt-get update
-apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm git nginx docker.io curl
+apt-get install -y python3-venv python3-pip network-manager dnsmasq nodejs npm git nginx docker.io
 
 # Disable and stop nginx immediately so it doesn't take port 80
 # The setup app (app.py) needs port 80. Nginx is only for production later.
